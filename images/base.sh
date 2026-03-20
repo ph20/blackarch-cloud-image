@@ -45,9 +45,12 @@ systemctl enable systemd-networkd
 systemctl enable systemd-resolved
 systemctl enable systemd-timesyncd
 systemctl enable systemd-time-wait-sync
-systemctl enable qemu-guest-agent
 systemctl enable pacman-init.service
 EOF
+
+  if [ "${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}" = "true" ]; then
+    arch-chroot "${MOUNT}" /usr/bin/systemctl enable qemu-guest-agent
+  fi
 
   arch-chroot "${MOUNT}" /usr/bin/grub-install --target=i386-pc "${LOOPDEV}"
   arch-chroot "${MOUNT}" /usr/bin/grub-install --target=x86_64-efi --efi-directory=/efi --removable

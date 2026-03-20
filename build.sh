@@ -30,6 +30,7 @@ readonly RESOLVED_IMAGE_KEYMAP="${IMAGE_KEYMAP:-us}"
 readonly RESOLVED_IMAGE_DEFAULT_USER="${IMAGE_DEFAULT_USER:-arch}"
 readonly RESOLVED_IMAGE_DEFAULT_USER_GECOS="${IMAGE_DEFAULT_USER_GECOS:-BlackArch Cloud User}"
 readonly RESOLVED_IMAGE_PASSWORDLESS_SUDO="${IMAGE_PASSWORDLESS_SUDO:-true}"
+readonly RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT="${IMAGE_ENABLE_QEMU_GUEST_AGENT:-false}"
 
 function status_line() {
   if [ -n "${STATUS_FD_READY:-}" ]; then
@@ -208,8 +209,27 @@ function setup_disk() {
 function bootstrap() {
   local pacman_dbpath="${TMPDIR}/pacman-db"
   local pacman_cachedir="${TMPDIR}/pacman-cache"
+  local -a bootstrap_packages=(
+    base
+    linux
+    grub
+    openssh
+    sudo
+    btrfs-progs
+    dosfstools
+    efibootmgr
+    curl
+    ca-certificates
+    gnupg
+    mkinitcpio
+    iptables-nft
+  )
 
   mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
+
+  if [ "${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}" = "true" ]; then
+    bootstrap_packages+=(qemu-guest-agent)
+  fi
 
   cat <<EOF >pacman.conf
 [options]
@@ -230,8 +250,7 @@ EOF
 
   pacstrap -C pacman.conf -M \
     "${MOUNT}" \
-    base linux grub openssh sudo btrfs-progs dosfstools efibootmgr \
-    qemu-guest-agent curl ca-certificates gnupg mkinitcpio iptables-nft
+    "${bootstrap_packages[@]}"
 
   gpgconf --homedir "${MOUNT}/etc/pacman.d/gnupg" --kill gpg-agent || true
   cp mirrorlist "${MOUNT}/etc/pacman.d/"
@@ -322,6 +341,7 @@ function write_manifest() {
   write_manifest_entry "${manifest_path}" "IMAGE_KEYMAP" "${RESOLVED_IMAGE_KEYMAP}"
   write_manifest_entry "${manifest_path}" "IMAGE_SWAP_SIZE" "${RESOLVED_IMAGE_SWAP_SIZE}"
   write_manifest_entry "${manifest_path}" "IMAGE_PASSWORDLESS_SUDO" "${RESOLVED_IMAGE_PASSWORDLESS_SUDO}"
+  write_manifest_entry "${manifest_path}" "IMAGE_ENABLE_QEMU_GUEST_AGENT" "${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}"
   write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_VERSION" "${RESOLVED_BLACKARCH_KEYRING_VERSION}"
   write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_SHA256_SOURCE" "${keyring_sha256_source}"
   write_manifest_entry "${manifest_path}" "BLACKARCH_BOOTSTRAP_MODE" "${bootstrap_mode}"

@@ -17,7 +17,7 @@ The generated image includes:
 - Arch Linux base system
 - BlackArch repository configured inside the image
 - `cloud-init`
-- `qemu-guest-agent`
+- optional `qemu-guest-agent` support via `IMAGE_ENABLE_QEMU_GUEST_AGENT=true`
 - Btrfs root filesystem with Zstandard compression
 - GRUB configured for both BIOS and UEFI boot
 - serial console support on `ttyS0`
@@ -167,6 +167,7 @@ sudo BLACKARCH_PROFILE=core ./build.sh
 
 - `IMAGE_HOSTNAME`, `IMAGE_SWAP_SIZE`, `IMAGE_LOCALE`, `IMAGE_TIMEZONE`, and `IMAGE_KEYMAP` — override first-boot image defaults while preserving the current default behavior when unset.
 - `IMAGE_DEFAULT_USER`, `IMAGE_DEFAULT_USER_GECOS`, and `IMAGE_PASSWORDLESS_SUDO` — override the default cloud user identity and sudo policy. `IMAGE_PASSWORDLESS_SUDO` accepts `true` or `false`.
+- `IMAGE_ENABLE_QEMU_GUEST_AGENT` — when set to `true`, install and enable `qemu-guest-agent`. Default: `false`.
 
 ## Output artifacts
 
@@ -247,7 +248,7 @@ Things to verify on first boot:
 - `cloud-init` finishes successfully
 - the `arch` user is created or configured as expected
 - your SSH key works
-- `qemu-guest-agent` is active
+- `qemu-guest-agent` is active when `IMAGE_ENABLE_QEMU_GUEST_AGENT=true`
 - networking comes up correctly
 
 ## Make targets

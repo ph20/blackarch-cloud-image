@@ -130,6 +130,7 @@ function validate_blackarch_bootstrap_configuration() {
 
 function validate_image_customization_configuration() {
   local image_passwordless_sudo="${IMAGE_PASSWORDLESS_SUDO:-true}"
+  local image_enable_qemu_guest_agent="${IMAGE_ENABLE_QEMU_GUEST_AGENT:-false}"
   local image_swap_size="${IMAGE_SWAP_SIZE:-512m}"
   local image_swap_size_bytes=''
 
@@ -138,6 +139,15 @@ function validate_image_customization_configuration() {
       ;;
     *)
       validation_fail "IMAGE_PASSWORDLESS_SUDO must be true or false (got: ${image_passwordless_sudo})"
+      return 1
+      ;;
+  esac
+
+  case "${image_enable_qemu_guest_agent}" in
+    true | false)
+      ;;
+    *)
+      validation_fail "IMAGE_ENABLE_QEMU_GUEST_AGENT must be 'true' or 'false' (got: ${image_enable_qemu_guest_agent})"
       return 1
       ;;
   esac
