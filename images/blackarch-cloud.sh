@@ -45,22 +45,26 @@ function install_blackarch_profile() {
 
 function pre() {
   local -a extra_blackarch_packages=()
-  local -a strap_env=(/usr/bin/env)
+  local -a setup_env=(/usr/bin/env)
 
   install -Dm0755 \
     "${PROJECT_ROOT}/scripts/setup-blackarch-repo.sh" \
     "${MOUNT}/root/setup-blackarch-repo.sh"
 
+  if [ -n "${BLACKARCH_KEYRING_VERSION:-}" ]; then
+    setup_env+=("BLACKARCH_KEYRING_VERSION=${BLACKARCH_KEYRING_VERSION}")
+  fi
+
   if [ -n "${BLACKARCH_STRAP_URL:-}" ]; then
-    strap_env+=("BLACKARCH_STRAP_URL=${BLACKARCH_STRAP_URL}")
+    setup_env+=("BLACKARCH_STRAP_URL=${BLACKARCH_STRAP_URL}")
   fi
 
   if [ -n "${BLACKARCH_STRAP_SHA256:-}" ]; then
-    strap_env+=("BLACKARCH_STRAP_SHA256=${BLACKARCH_STRAP_SHA256}")
+    setup_env+=("BLACKARCH_STRAP_SHA256=${BLACKARCH_STRAP_SHA256}")
   fi
 
-  strap_env+=(/root/setup-blackarch-repo.sh)
-  arch-chroot "${MOUNT}" "${strap_env[@]}"
+  setup_env+=(/root/setup-blackarch-repo.sh)
+  arch-chroot "${MOUNT}" "${setup_env[@]}"
   rm -f "${MOUNT}/root/setup-blackarch-repo.sh"
   install_blackarch_profile
 

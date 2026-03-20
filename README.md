@@ -16,6 +16,8 @@ The result is a compressed `qcow2` image with:
 
 By default the build uses the `core` profile: the BlackArch repository is configured, but no extra BlackArch toolset is preinstalled. You can switch to `common`, and you can still append extra packages through `BLACKARCH_PACKAGES`.
 
+The repository bootstrap now runs from the in-repo `scripts/setup-blackarch-repo.sh` flow instead of downloading and executing `https://blackarch.org/strap.sh` during the build.
+
 ## Requirements
 
 Build on an Arch Linux host with these packages available:
@@ -60,8 +62,9 @@ sudo BLACKARCH_PROFILE=common DISK_SIZE=20G ./build.sh
 
 - `BLACKARCH_PROFILE`: one of `core`, `common`; defaults to `core`
 - `BLACKARCH_PACKAGES`: space-separated list of packages to install after the BlackArch repository is configured
-- `BLACKARCH_STRAP_URL`: override URL for the BlackArch bootstrap script
-- `BLACKARCH_STRAP_SHA256`: optional SHA256 checksum for the downloaded strap script
+- `BLACKARCH_KEYRING_VERSION`: keyring bundle version used by the built-in BlackArch bootstrap; defaults to `20251011`
+- `BLACKARCH_STRAP_URL`: optional compatibility override to run an external BlackArch strap script instead of the built-in bootstrap
+- `BLACKARCH_STRAP_SHA256`: optional SHA256 checksum for that external strap script
 - `DEFAULT_DISK_SIZE`: initial raw disk size used during bootstrap, defaults to `2G`
 - `DISK_SIZE`: optional final root disk size for the image before conversion to `qcow2`
 
