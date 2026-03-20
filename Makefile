@@ -14,11 +14,11 @@ check-env:
 	bash ./scripts/check-build-env.sh
 
 lint:
-	bash -n build.sh images/*.sh scripts/*.sh
-	shellcheck build.sh images/*.sh scripts/*.sh
+	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh
+	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh
 
 clean:
-	rm -rf output tmp
+	bash ./scripts/clean-build-state.sh
 
 help:
 	@printf '%s\n' \
@@ -29,5 +29,5 @@ help:
 		'  build      Run preflight checks, write a build log in output/, and show only high-level build steps' \
 		'  check-env  Validate host requirements, sudo availability, and free space' \
 		'  lint       Run shell syntax checks and shellcheck' \
-		'  clean      Remove output/ and tmp/' \
+		'  clean      Unmount stale tmp/ build leftovers, remove tmp/, and delete versioned build artifacts from output/' \
 		'  help       Show this help'

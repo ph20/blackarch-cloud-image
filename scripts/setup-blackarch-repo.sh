@@ -6,7 +6,6 @@ set -o pipefail
 
 # Matches the keyring bundle version used by the official strap.sh snapshot.
 readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
-readonly LEGACY_STRAP_URL="${BLACKARCH_STRAP_URL:-https://blackarch.org/strap.sh}"
 readonly KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 readonly KEYRING_ARCHIVE="blackarch-keyring-${KEYRING_VERSION}.tar.gz"
 readonly KEYRING_URL="https://www.blackarch.org/keyring/${KEYRING_ARCHIVE}"
@@ -30,14 +29,67 @@ function pacman_sync() {
   pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
 }
 
+function fail() {
+  echo "${1}" >&2
+  exit 1
+}
+
+function download_https() {
+  local url="${1}"
+  local destination="${2}"
+  local tmp_path=''
+
+  tmp_path="$(mktemp "${WORKDIR}/download.XXXXXX")"
+
+  curl \
+    --fail \
+    --show-error \
+    --silent \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    "${url}" \
+    --output "${tmp_path}"
+
+  mv "${tmp_path}" "${destination}"
+}
+
+function verify_sha256() {
+  local file_path="${1}"
+  local expected_sha256="${2}"
+  local artifact_label="${3}"
+
+  if ! echo "${expected_sha256}  ${file_path}" | sha256sum --check --status -; then
+    fail "${artifact_label} SHA256 verification failed"
+  fi
+}
+
+function resolve_keyring_sha256() {
+  if [ -n "${BLACKARCH_KEYRING_SHA256:-}" ]; then
+    printf '%s\n' "${BLACKARCH_KEYRING_SHA256}"
+    return
+  fi
+
+  case "${KEYRING_VERSION}" in
+    20251011)
+      printf '%s\n' 'e4934a37b018dda1df6403147c11c3e8efdc543419f10be485c7836e19f3cfbe'
+      ;;
+    *)
+      fail "BLACKARCH_KEYRING_SHA256 is required for BLACKARCH_KEYRING_VERSION=${KEYRING_VERSION}"
+      ;;
+  esac
+}
+
 function run_legacy_strap() {
   local strap_path="${WORKDIR}/strap.sh"
+  local strap_url="${BLACKARCH_STRAP_URL}"
 
-  curl -fsSL "${LEGACY_STRAP_URL}" -o "${strap_path}"
-
-  if [ -n "${BLACKARCH_STRAP_SHA256:-}" ]; then
-    echo "${BLACKARCH_STRAP_SHA256}  ${strap_path}" | sha256sum --check --status -
+  if [ -z "${BLACKARCH_STRAP_SHA256:-}" ]; then
+    fail "BLACKARCH_STRAP_SHA256 is required when BLACKARCH_STRAP_URL is set"
   fi
+
+  download_https "${strap_url}" "${strap_path}"
+  verify_sha256 "${strap_path}" "${BLACKARCH_STRAP_SHA256}" "BlackArch legacy strap"
 
   bash "${strap_path}"
 }
@@ -51,9 +103,13 @@ function require_root() {
 
 function install_keyring() {
   local extracted_dir="${WORKDIR}/blackarch-keyring-${KEYRING_VERSION}"
+  local keyring_archive_path="${WORKDIR}/${KEYRING_ARCHIVE}"
+  local keyring_sha256=''
 
-  curl -fsSL "${KEYRING_URL}" -o "${WORKDIR}/${KEYRING_ARCHIVE}"
-  tar xzf "${WORKDIR}/${KEYRING_ARCHIVE}" -C "${WORKDIR}"
+  keyring_sha256="$(resolve_keyring_sha256)"
+  download_https "${KEYRING_URL}" "${keyring_archive_path}"
+  verify_sha256 "${keyring_archive_path}" "${keyring_sha256}" "${KEYRING_ARCHIVE}"
+  tar xzf "${keyring_archive_path}" -C "${WORKDIR}"
 
   install -Dm0644 \
     "${extracted_dir}/blackarch.gpg" \
@@ -74,7 +130,10 @@ function install_keyring() {
 }
 
 function install_mirrorlist() {
-  curl -fsSL "${MIRRORLIST_URL}" -o "${MIRRORLIST_PATH}"
+  local mirrorlist_path_tmp="${WORKDIR}/blackarch-mirrorlist"
+
+  download_https "${MIRRORLIST_URL}" "${mirrorlist_path_tmp}"
+  install -Dm0644 "${mirrorlist_path_tmp}" "${MIRRORLIST_PATH}"
 }
 
 function ensure_blackarch_repo() {
@@ -100,9 +159,13 @@ function sync_blackarch_repo() {
 function main() {
   require_root
 
-  if [ -n "${BLACKARCH_STRAP_URL:-}" ] || [ -n "${BLACKARCH_STRAP_SHA256:-}" ]; then
+  if [ -n "${BLACKARCH_STRAP_URL:-}" ]; then
     run_legacy_strap
     return
+  fi
+
+  if [ -n "${BLACKARCH_STRAP_SHA256:-}" ]; then
+    fail "BLACKARCH_STRAP_SHA256 requires BLACKARCH_STRAP_URL"
   fi
 
   install_keyring

@@ -16,6 +16,22 @@ readonly OUTPUT="${PROJECT_ROOT}/output"
 readonly TMP_ROOT="${PROJECT_ROOT}/tmp"
 readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
 
+# shellcheck source=scripts/lib/validation.sh
+source "${PROJECT_ROOT}/scripts/lib/validation.sh"
+
+readonly RESOLVED_BLACKARCH_PROFILE="${BLACKARCH_PROFILE:-core}"
+readonly RESOLVED_BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
+readonly RESOLVED_FINAL_DISK_SIZE="${DISK_SIZE:-${DEFAULT_DISK_SIZE}}"
+readonly RESOLVED_IMAGE_HOSTNAME="${IMAGE_HOSTNAME:-blackarch}"
+readonly RESOLVED_IMAGE_SWAP_SIZE="${IMAGE_SWAP_SIZE:-512m}"
+readonly RESOLVED_IMAGE_LOCALE="${IMAGE_LOCALE:-C.UTF-8}"
+readonly RESOLVED_IMAGE_TIMEZONE="${IMAGE_TIMEZONE:-UTC}"
+readonly RESOLVED_IMAGE_KEYMAP="${IMAGE_KEYMAP:-us}"
+readonly RESOLVED_IMAGE_DEFAULT_USER="${IMAGE_DEFAULT_USER:-arch}"
+readonly RESOLVED_IMAGE_DEFAULT_USER_GECOS="${IMAGE_DEFAULT_USER_GECOS:-BlackArch Cloud User}"
+readonly RESOLVED_IMAGE_PASSWORDLESS_SUDO="${IMAGE_PASSWORDLESS_SUDO:-true}"
+readonly RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT="${IMAGE_ENABLE_QEMU_GUEST_AGENT:-false}"
+
 function status_line() {
   if [ -n "${STATUS_FD_READY:-}" ]; then
     printf '%s\n' "${1}" >&3
@@ -88,12 +104,15 @@ function next_default_build_version() {
 }
 
 function resolve_build_version() {
-  if [ -z "${1:-}" ]; then
-    build_version="$(next_default_build_version)"
-    build_version_was_defaulted=1
-  else
+  if [ -n "${1:-}" ]; then
     build_version="${1}"
     build_version_was_defaulted=0
+  elif [ -n "${BUILD_VERSION:-}" ]; then
+    build_version="${BUILD_VERSION}"
+    build_version_was_defaulted=0
+  else
+    build_version="$(next_default_build_version)"
+    build_version_was_defaulted=1
   fi
 
   readonly build_version
@@ -118,7 +137,7 @@ function setup_logging() {
   log_step "Writing build log to ${BUILD_LOG}"
 
   if [ "${build_version_was_defaulted}" -eq 1 ]; then
-    status_line "BUILD_VERSION wasn't set."
+    status_line "No explicit build version was provided."
     status_line "Auto-selected build version ${build_version}"
   fi
 }
@@ -134,7 +153,7 @@ function init() {
   readonly TMPDIR="${tmpdir}"
 
   if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
-    chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${TMPDIR}"
+    chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${TMP_ROOT}" "${TMPDIR}"
   fi
 
   cd "${TMPDIR}"
@@ -145,12 +164,12 @@ function init() {
 function cleanup() {
   set +o errexit
 
-  if [ -n "${MOUNT:-}" ] && mountpoint -q "${MOUNT}"; then
-    umount --recursive "${MOUNT}" || true
+  if [ -n "${MOUNT:-}" ]; then
+    unmount_mount_tree "${MOUNT}" || true
   fi
 
   if [ -n "${LOOPDEV:-}" ]; then
-    losetup -d "${LOOPDEV}" || true
+    detach_loop_device "${LOOPDEV}" || true
   fi
 
   if [ -n "${TMPDIR:-}" ] && [ -d "${TMPDIR}" ]; then
@@ -158,6 +177,38 @@ function cleanup() {
   fi
 }
 trap cleanup EXIT
+
+function unmount_mount_tree() {
+  local mount_root="${1}"
+
+  if ! mountpoint -q "${mount_root}"; then
+    return 0
+  fi
+
+  if umount --recursive "${mount_root}"; then
+    return 0
+  fi
+
+  status_line "Standard unmount failed for ${mount_root}; retrying with lazy unmount."
+  umount --recursive --lazy "${mount_root}"
+}
+
+function detach_loop_device() {
+  local loop_device="${1}"
+  local retries=3
+
+  while [ "${retries}" -gt 0 ]; do
+    if losetup -d "${loop_device}" 2>/dev/null; then
+      return 0
+    fi
+
+    udevadm settle || true
+    sleep 1
+    retries=$((retries - 1))
+  done
+
+  losetup -d "${loop_device}"
+}
 
 function wait_until_settled() {
   udevadm settle
@@ -190,8 +241,27 @@ function setup_disk() {
 function bootstrap() {
   local pacman_dbpath="${TMPDIR}/pacman-db"
   local pacman_cachedir="${TMPDIR}/pacman-cache"
+  local -a bootstrap_packages=(
+    base
+    linux
+    grub
+    openssh
+    sudo
+    btrfs-progs
+    dosfstools
+    efibootmgr
+    curl
+    ca-certificates
+    gnupg
+    mkinitcpio
+    iptables-nft
+  )
 
   mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
+
+  if [ "${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}" = "true" ]; then
+    bootstrap_packages+=(qemu-guest-agent)
+  fi
 
   cat <<EOF >pacman.conf
 [options]
@@ -212,8 +282,7 @@ EOF
 
   pacstrap -C pacman.conf -M \
     "${MOUNT}" \
-    base linux grub openssh sudo btrfs-progs dosfstools efibootmgr \
-    qemu-guest-agent curl ca-certificates gnupg mkinitcpio iptables-nft
+    "${bootstrap_packages[@]}"
 
   gpgconf --homedir "${MOUNT}/etc/pacman.d/gnupg" --kill gpg-agent || true
   cp mirrorlist "${MOUNT}/etc/pacman.d/"
@@ -241,24 +310,75 @@ function mount_image() {
 }
 
 function unmount_image() {
-  if mountpoint -q "${MOUNT}"; then
-    umount --recursive "${MOUNT}"
-  fi
+  unmount_mount_tree "${MOUNT}"
 
   if [ -n "${LOOPDEV:-}" ]; then
-    losetup -d "${LOOPDEV}"
+    detach_loop_device "${LOOPDEV}"
     LOOPDEV=""
   fi
 }
 
 function mv_to_output() {
-  sha256sum "${1}" >"${1}.SHA256"
+  local image_path="${1}"
+  local manifest_path=''
+
+  manifest_path="$(write_manifest "${image_path}")"
+  sha256sum "${image_path}" >"${image_path}.SHA256"
 
   if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
-    chown "${SUDO_UID}:${SUDO_GID}" "${1}" "${1}.SHA256"
+    chown "${SUDO_UID}:${SUDO_GID}" "${image_path}" "${image_path}.SHA256" "${manifest_path}"
   fi
 
-  mv "${1}" "${1}.SHA256" "${OUTPUT}/"
+  mv "${image_path}" "${image_path}.SHA256" "${manifest_path}" "${OUTPUT}/"
+}
+
+function write_manifest_entry() {
+  local manifest_path="${1}"
+  local key="${2}"
+  local value="${3}"
+
+  printf '%s=%q\n' "${key}" "${value}" >>"${manifest_path}"
+}
+
+function write_manifest() {
+  local image_path="${1}"
+  local manifest_path="${image_path%.qcow2}.manifest"
+  local bootstrap_mode='built-in'
+  local strap_sha256_set='false'
+  local keyring_sha256_source='pinned'
+
+  if [ -n "${BLACKARCH_STRAP_URL:-}" ]; then
+    bootstrap_mode='legacy-custom-strap'
+    strap_sha256_set='true'
+  fi
+
+  if [ -n "${BLACKARCH_KEYRING_SHA256:-}" ]; then
+    keyring_sha256_source='env'
+  fi
+
+  : > "${manifest_path}"
+  write_manifest_entry "${manifest_path}" "BUILD_VERSION" "${build_version}"
+  write_manifest_entry "${manifest_path}" "IMAGE_NAME" "${IMAGE_NAME}"
+  write_manifest_entry "${manifest_path}" "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE}"
+  write_manifest_entry "${manifest_path}" "FINAL_DISK_SIZE" "${RESOLVED_FINAL_DISK_SIZE}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_PROFILE" "${RESOLVED_BLACKARCH_PROFILE}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_PACKAGES" "${BLACKARCH_PACKAGES:-}"
+  write_manifest_entry "${manifest_path}" "IMAGE_HOSTNAME" "${RESOLVED_IMAGE_HOSTNAME}"
+  write_manifest_entry "${manifest_path}" "IMAGE_DEFAULT_USER" "${RESOLVED_IMAGE_DEFAULT_USER}"
+  write_manifest_entry "${manifest_path}" "IMAGE_DEFAULT_USER_GECOS" "${RESOLVED_IMAGE_DEFAULT_USER_GECOS}"
+  write_manifest_entry "${manifest_path}" "IMAGE_LOCALE" "${RESOLVED_IMAGE_LOCALE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_TIMEZONE" "${RESOLVED_IMAGE_TIMEZONE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_KEYMAP" "${RESOLVED_IMAGE_KEYMAP}"
+  write_manifest_entry "${manifest_path}" "IMAGE_SWAP_SIZE" "${RESOLVED_IMAGE_SWAP_SIZE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_PASSWORDLESS_SUDO" "${RESOLVED_IMAGE_PASSWORDLESS_SUDO}"
+  write_manifest_entry "${manifest_path}" "IMAGE_ENABLE_QEMU_GUEST_AGENT" "${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_VERSION" "${RESOLVED_BLACKARCH_KEYRING_VERSION}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_SHA256_SOURCE" "${keyring_sha256_source}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_BOOTSTRAP_MODE" "${bootstrap_mode}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_STRAP_URL" "${BLACKARCH_STRAP_URL:-}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_STRAP_SHA256_SET" "${strap_sha256_set}"
+
+  printf '%s\n' "${manifest_path}"
 }
 
 function create_image() {
@@ -312,6 +432,7 @@ function main() {
   fi
 
   resolve_build_version "${1:-}"
+  validate_build_configuration "${build_version}"
   setup_logging
 
   log_step "Initializing build workspace"
@@ -337,6 +458,7 @@ function main() {
   status_line "Artifacts saved to: ${OUTPUT}"
   status_line "Image: ${OUTPUT}/${IMAGE_NAME}"
   status_line "Checksum: ${OUTPUT}/${IMAGE_NAME}.SHA256"
+  status_line "Manifest: ${OUTPUT}/${IMAGE_NAME%.qcow2}.manifest"
   status_line "Build log: ${BUILD_LOG}"
 }
 main "${1:-}"
