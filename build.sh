@@ -15,9 +15,18 @@ readonly OUTPUT="${PROJECT_ROOT}/output"
 readonly TMP_ROOT="${PROJECT_ROOT}/tmp"
 readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
 
-function log_step() {
-  printf '\n==> %s\n' "${1}"
+function status_line() {
+  if [ -n "${STATUS_FD_READY:-}" ]; then
+    printf '%s\n' "${1}" >&3
+  fi
+  printf '%s\n' "${1}"
 }
+
+function log_step() {
+  status_line "==> ${1}"
+}
+
+
 
 function resolve_build_version() {
   if [ -z "${1:-}" ]; then
@@ -43,13 +52,15 @@ function setup_logging() {
     chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${BUILD_LOG}"
   fi
 
-  exec > >(tee -a "${BUILD_LOG}") 2>&1
+  exec 3>&1
+  STATUS_FD_READY=1
+  exec >>"${BUILD_LOG}" 2>&1
 
   log_step "Writing build log to ${BUILD_LOG}"
 
   if [ "${build_version_was_defaulted}" -eq 1 ]; then
-    echo "WARNING: BUILD_VERSION wasn't set!"
-    echo "Falling back to ${build_version}"
+    status_line "WARNING: BUILD_VERSION wasn't set!"
+    status_line "Falling back to ${build_version}"
   fi
 }
 
@@ -191,6 +202,7 @@ function mv_to_output() {
 function create_image() {
   local tmp_image
 
+  log_step "Preparing final image layout"
   tmp_image="$(basename "$(mktemp -u --tmpdir="${PWD}" image.XXXXXXXXXX.raw)")"
   cp -a "${IMAGE}" "${tmp_image}"
 
@@ -205,22 +217,29 @@ function create_image() {
   mount_image "${tmp_image}"
 
   if [ -n "${DISK_SIZE}" ]; then
+    log_step "Resizing final image filesystem"
     btrfs filesystem resize max "${MOUNT}"
   fi
 
   if [ "${#PACKAGES[@]}" -gt 0 ]; then
+    log_step "Installing final image packages"
     arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never "${PACKAGES[@]}"
   fi
 
   if [ "${#SERVICES[@]}" -gt 0 ]; then
+    log_step "Enabling final image services"
     arch-chroot "${MOUNT}" /usr/bin/systemctl enable "${SERVICES[@]}"
   fi
 
+  log_step "Applying BlackArch cloud customizations"
   pre
+  log_step "Cleaning image for distribution"
   image_cleanup
   unmount_image
 
+  log_step "Converting raw image to qcow2"
   post "${tmp_image}" "${1}"
+  log_step "Writing checksum and moving artifacts"
   mv_to_output "${1}"
 }
 
@@ -250,13 +269,12 @@ function main() {
 
   # shellcheck source=images/blackarch-cloud.sh
   source "${PROJECT_ROOT}/images/blackarch-cloud.sh"
-  log_step "Building final BlackArch cloud image"
   create_image "${IMAGE_NAME}"
 
   log_step "Build completed"
-  printf 'Artifacts saved to: %s\n' "${OUTPUT}"
-  printf 'Image: %s/%s\n' "${OUTPUT}" "${IMAGE_NAME}"
-  printf 'Checksum: %s/%s.SHA256\n' "${OUTPUT}" "${IMAGE_NAME}"
-  printf 'Build log: %s\n' "${BUILD_LOG}"
+  status_line "Artifacts saved to: ${OUTPUT}"
+  status_line "Image: ${OUTPUT}/${IMAGE_NAME}"
+  status_line "Checksum: ${OUTPUT}/${IMAGE_NAME}.SHA256"
+  status_line "Build log: ${BUILD_LOG}"
 }
 main "${1:-}"
