@@ -159,8 +159,14 @@ sudo BLACKARCH_PROFILE=core ./build.sh
 - `BLACKARCH_PROFILE` — `core` or `common`. Default: `core`.
 - `BLACKARCH_PACKAGES` — space-separated package list to install after the BlackArch repository is configured.
 - `BLACKARCH_KEYRING_VERSION` — keyring bundle version used by the in-repo BlackArch bootstrap. Default: `20251011`.
+- `BLACKARCH_KEYRING_SHA256` — optional explicit SHA256 for the selected keyring archive; required when using an unpinned custom keyring version.
 - `BLACKARCH_STRAP_URL` — optional compatibility override for using an external BlackArch strap script instead of the built-in bootstrap.
-- `BLACKARCH_STRAP_SHA256` — optional SHA256 checksum for that external strap script.
+- `BLACKARCH_STRAP_SHA256` — required SHA256 checksum for `BLACKARCH_STRAP_URL`.
+
+### Image customization settings
+
+- `IMAGE_HOSTNAME`, `IMAGE_SWAP_SIZE`, `IMAGE_LOCALE`, `IMAGE_TIMEZONE`, and `IMAGE_KEYMAP` — override first-boot image defaults while preserving the current default behavior when unset.
+- `IMAGE_DEFAULT_USER`, `IMAGE_DEFAULT_USER_GECOS`, and `IMAGE_PASSWORDLESS_SUDO` — override the default cloud user identity and sudo policy. `IMAGE_PASSWORDLESS_SUDO` accepts `true` or `false`.
 
 ## Output artifacts
 
@@ -168,6 +174,7 @@ Successful builds produce these files in `output/`:
 
 - `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2`
 - `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2.SHA256`
+- `BlackArch-Linux-x86_64-cloudimg-<version>.manifest`
 - `BlackArch-Linux-x86_64-cloudimg-<version>.build.log`
 
 Verify the checksum after the build:

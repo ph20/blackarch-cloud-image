@@ -19,6 +19,18 @@ readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
 # shellcheck source=scripts/lib/validation.sh
 source "${PROJECT_ROOT}/scripts/lib/validation.sh"
 
+readonly RESOLVED_BLACKARCH_PROFILE="${BLACKARCH_PROFILE:-core}"
+readonly RESOLVED_BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
+readonly RESOLVED_FINAL_DISK_SIZE="${DISK_SIZE:-${DEFAULT_DISK_SIZE}}"
+readonly RESOLVED_IMAGE_HOSTNAME="${IMAGE_HOSTNAME:-blackarch}"
+readonly RESOLVED_IMAGE_SWAP_SIZE="${IMAGE_SWAP_SIZE:-512m}"
+readonly RESOLVED_IMAGE_LOCALE="${IMAGE_LOCALE:-C.UTF-8}"
+readonly RESOLVED_IMAGE_TIMEZONE="${IMAGE_TIMEZONE:-UTC}"
+readonly RESOLVED_IMAGE_KEYMAP="${IMAGE_KEYMAP:-us}"
+readonly RESOLVED_IMAGE_DEFAULT_USER="${IMAGE_DEFAULT_USER:-arch}"
+readonly RESOLVED_IMAGE_DEFAULT_USER_GECOS="${IMAGE_DEFAULT_USER_GECOS:-BlackArch Cloud User}"
+readonly RESOLVED_IMAGE_PASSWORDLESS_SUDO="${IMAGE_PASSWORDLESS_SUDO:-true}"
+
 function status_line() {
   if [ -n "${STATUS_FD_READY:-}" ]; then
     printf '%s\n' "${1}" >&3
@@ -258,13 +270,65 @@ function unmount_image() {
 }
 
 function mv_to_output() {
-  sha256sum "${1}" >"${1}.SHA256"
+  local image_path="${1}"
+  local manifest_path=''
+
+  manifest_path="$(write_manifest "${image_path}")"
+  sha256sum "${image_path}" >"${image_path}.SHA256"
 
   if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
-    chown "${SUDO_UID}:${SUDO_GID}" "${1}" "${1}.SHA256"
+    chown "${SUDO_UID}:${SUDO_GID}" "${image_path}" "${image_path}.SHA256" "${manifest_path}"
   fi
 
-  mv "${1}" "${1}.SHA256" "${OUTPUT}/"
+  mv "${image_path}" "${image_path}.SHA256" "${manifest_path}" "${OUTPUT}/"
+}
+
+function write_manifest_entry() {
+  local manifest_path="${1}"
+  local key="${2}"
+  local value="${3}"
+
+  printf '%s=%q\n' "${key}" "${value}" >>"${manifest_path}"
+}
+
+function write_manifest() {
+  local image_path="${1}"
+  local manifest_path="${image_path%.qcow2}.manifest"
+  local bootstrap_mode='built-in'
+  local strap_sha256_set='false'
+  local keyring_sha256_source='pinned'
+
+  if [ -n "${BLACKARCH_STRAP_URL:-}" ]; then
+    bootstrap_mode='legacy-custom-strap'
+    strap_sha256_set='true'
+  fi
+
+  if [ -n "${BLACKARCH_KEYRING_SHA256:-}" ]; then
+    keyring_sha256_source='env'
+  fi
+
+  : > "${manifest_path}"
+  write_manifest_entry "${manifest_path}" "BUILD_VERSION" "${build_version}"
+  write_manifest_entry "${manifest_path}" "IMAGE_NAME" "${IMAGE_NAME}"
+  write_manifest_entry "${manifest_path}" "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE}"
+  write_manifest_entry "${manifest_path}" "FINAL_DISK_SIZE" "${RESOLVED_FINAL_DISK_SIZE}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_PROFILE" "${RESOLVED_BLACKARCH_PROFILE}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_PACKAGES" "${BLACKARCH_PACKAGES:-}"
+  write_manifest_entry "${manifest_path}" "IMAGE_HOSTNAME" "${RESOLVED_IMAGE_HOSTNAME}"
+  write_manifest_entry "${manifest_path}" "IMAGE_DEFAULT_USER" "${RESOLVED_IMAGE_DEFAULT_USER}"
+  write_manifest_entry "${manifest_path}" "IMAGE_DEFAULT_USER_GECOS" "${RESOLVED_IMAGE_DEFAULT_USER_GECOS}"
+  write_manifest_entry "${manifest_path}" "IMAGE_LOCALE" "${RESOLVED_IMAGE_LOCALE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_TIMEZONE" "${RESOLVED_IMAGE_TIMEZONE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_KEYMAP" "${RESOLVED_IMAGE_KEYMAP}"
+  write_manifest_entry "${manifest_path}" "IMAGE_SWAP_SIZE" "${RESOLVED_IMAGE_SWAP_SIZE}"
+  write_manifest_entry "${manifest_path}" "IMAGE_PASSWORDLESS_SUDO" "${RESOLVED_IMAGE_PASSWORDLESS_SUDO}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_VERSION" "${RESOLVED_BLACKARCH_KEYRING_VERSION}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_KEYRING_SHA256_SOURCE" "${keyring_sha256_source}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_BOOTSTRAP_MODE" "${bootstrap_mode}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_STRAP_URL" "${BLACKARCH_STRAP_URL:-}"
+  write_manifest_entry "${manifest_path}" "BLACKARCH_STRAP_SHA256_SET" "${strap_sha256_set}"
+
+  printf '%s\n' "${manifest_path}"
 }
 
 function create_image() {
@@ -344,6 +408,7 @@ function main() {
   status_line "Artifacts saved to: ${OUTPUT}"
   status_line "Image: ${OUTPUT}/${IMAGE_NAME}"
   status_line "Checksum: ${OUTPUT}/${IMAGE_NAME}.SHA256"
+  status_line "Manifest: ${OUTPUT}/${IMAGE_NAME%.qcow2}.manifest"
   status_line "Build log: ${BUILD_LOG}"
 }
 main "${1:-}"

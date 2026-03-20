@@ -2,6 +2,7 @@
 
 readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
 readonly MIN_IMAGE_SIZE_BYTES=$((2 * 1024 * 1024 * 1024))
+readonly MIN_SWAP_SIZE_BYTES=$((64 * 1024 * 1024))
 
 function validation_fail() {
   echo "${1}" >&2
@@ -127,6 +128,31 @@ function validate_blackarch_bootstrap_configuration() {
   validation_fail "BLACKARCH_KEYRING_SHA256 is required for BLACKARCH_KEYRING_VERSION=${keyring_version}"
 }
 
+function validate_image_customization_configuration() {
+  local image_passwordless_sudo="${IMAGE_PASSWORDLESS_SUDO:-true}"
+  local image_swap_size="${IMAGE_SWAP_SIZE:-512m}"
+  local image_swap_size_bytes=''
+
+  case "${image_passwordless_sudo}" in
+    true | false)
+      ;;
+    *)
+      validation_fail "IMAGE_PASSWORDLESS_SUDO must be true or false (got: ${image_passwordless_sudo})"
+      return 1
+      ;;
+  esac
+
+  if ! image_swap_size_bytes="$(parse_size_to_bytes "${image_swap_size}")"; then
+    validation_fail "IMAGE_SWAP_SIZE must be a size such as 512M or 1G (got: ${image_swap_size})"
+    return 1
+  fi
+
+  if [ "${image_swap_size_bytes}" -lt "${MIN_SWAP_SIZE_BYTES}" ]; then
+    validation_fail "IMAGE_SWAP_SIZE must be at least 64M (got: ${image_swap_size})"
+    return 1
+  fi
+}
+
 function validate_build_configuration() {
   local build_version="${1:-}"
 
@@ -135,4 +161,5 @@ function validate_build_configuration() {
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1
   validate_blackarch_profile_value "${BLACKARCH_PROFILE:-core}" || return 1
   validate_blackarch_bootstrap_configuration || return 1
+  validate_image_customization_configuration || return 1
 }

@@ -11,7 +11,6 @@ function chroot_pacman_sync() {
 }
 
 function install_blackarch_profile() {
-  local profile="${BLACKARCH_PROFILE:-core}"
   local -a common_packages=(
     mlocate
     net-tools
@@ -34,15 +33,26 @@ function install_blackarch_profile() {
     burpsuite
   )
 
-  case "${profile}" in
+  case "${RESOLVED_BLACKARCH_PROFILE}" in
     core)
       ;;
     common)
       chroot_pacman_sync "${common_packages[@]}"
       ;;
     *)
-      echo "Unsupported BLACKARCH_PROFILE: ${profile}" >&2
+      echo "Unsupported BLACKARCH_PROFILE: ${RESOLVED_BLACKARCH_PROFILE}" >&2
       return 1
+      ;;
+  esac
+}
+
+function default_user_sudo_policy() {
+  case "${RESOLVED_IMAGE_PASSWORDLESS_SUDO}" in
+    true)
+      printf '%s\n' 'ALL=(ALL) NOPASSWD:ALL'
+      ;;
+    false)
+      printf '%s\n' 'ALL=(ALL) ALL'
       ;;
   esac
 }
@@ -50,6 +60,7 @@ function install_blackarch_profile() {
 function pre() {
   local -a extra_blackarch_packages=()
   local -a setup_env=(/usr/bin/env)
+  local default_user_sudo=''
 
   install -Dm0755 \
     "${PROJECT_ROOT}/scripts/setup-blackarch-repo.sh" \
@@ -82,7 +93,9 @@ function pre() {
     chroot_pacman_sync "${extra_blackarch_packages[@]}"
   fi
 
-  cat <<'EOF' >"${MOUNT}/etc/cloud/cloud.cfg.d/10_blackarch.cfg"
+  default_user_sudo="$(default_user_sudo_policy)"
+
+  cat <<EOF >"${MOUNT}/etc/cloud/cloud.cfg.d/10_blackarch.cfg"
 users:
   - default
 disable_root: true
@@ -90,10 +103,10 @@ ssh_pwauth: false
 system_info:
   distro: arch
   default_user:
-    name: arch
-    gecos: BlackArch Cloud User
+    name: ${RESOLVED_IMAGE_DEFAULT_USER}
+    gecos: ${RESOLVED_IMAGE_DEFAULT_USER_GECOS}
     groups: [wheel, systemd-journal]
-    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    sudo: ["${default_user_sudo}"]
     lock_passwd: true
     shell: /bin/bash
 EOF

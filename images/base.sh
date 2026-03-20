@@ -6,14 +6,14 @@ function pre() {
   arch-chroot "${MOUNT}" /usr/bin/btrfs subvolume create /swap
   chattr +C "${MOUNT}/swap"
   chmod 0700 "${MOUNT}/swap"
-  arch-chroot "${MOUNT}" /usr/bin/btrfs filesystem mkswapfile --size 512m --uuid clear /swap/swapfile
+  arch-chroot "${MOUNT}" /usr/bin/btrfs filesystem mkswapfile --size "${RESOLVED_IMAGE_SWAP_SIZE}" --uuid clear /swap/swapfile
   echo "/swap/swapfile none swap defaults 0 0" >>"${MOUNT}/etc/fstab"
 
   arch-chroot "${MOUNT}" /usr/bin/systemd-firstboot \
-    --locale=C.UTF-8 \
-    --timezone=UTC \
-    --hostname=blackarch \
-    --keymap=us
+    --locale="${RESOLVED_IMAGE_LOCALE}" \
+    --timezone="${RESOLVED_IMAGE_TIMEZONE}" \
+    --hostname="${RESOLVED_IMAGE_HOSTNAME}" \
+    --keymap="${RESOLVED_IMAGE_KEYMAP}"
   ln -sf /run/systemd/resolve/stub-resolv.conf "${MOUNT}/etc/resolv.conf"
 
   cat <<EOF >"${MOUNT}/etc/systemd/system/pacman-init.service"
