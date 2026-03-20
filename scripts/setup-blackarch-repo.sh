@@ -57,8 +57,12 @@ function install_keyring() {
     "${extracted_dir}/blackarch-revoked" \
     "${PACMAN_KEYRING_DIR}/blackarch-revoked"
 
-  pacman-key --init
-  pacman-key --populate
+  if [ ! -d /etc/pacman.d/gnupg ] || [ -z "$(find /etc/pacman.d/gnupg -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
+    pacman-key --init
+    pacman-key --populate archlinux
+  fi
+
+  pacman-key --populate blackarch
 }
 
 function install_mirrorlist() {

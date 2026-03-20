@@ -12,6 +12,7 @@ readonly IMAGE="image.img"
 readonly MIRROR='https://fastly.mirror.pkgbuild.com/$repo/os/$arch'
 readonly OUTPUT="${PROJECT_ROOT}/output"
 readonly TMP_ROOT="${PROJECT_ROOT}/tmp"
+readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
 
 function init() {
   local tmpdir
@@ -75,10 +76,18 @@ function setup_disk() {
 }
 
 function bootstrap() {
+  local pacman_dbpath="${TMPDIR}/pacman-db"
+  local pacman_cachedir="${TMPDIR}/pacman-cache"
+
+  mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
+
   cat <<EOF >pacman.conf
 [options]
 Architecture = auto
 SigLevel = DatabaseOptional
+DBPath = ${pacman_dbpath}
+CacheDir = ${pacman_cachedir}
+GPGDir = ${PACSTRAP_GPGDIR}
 
 [core]
 Include = mirrorlist
@@ -89,10 +98,10 @@ EOF
 
   echo "Server = ${MIRROR}" >mirrorlist
 
-  pacstrap -c -C pacman.conf -K -M \
+  pacstrap -C pacman.conf -M \
     "${MOUNT}" \
     base linux grub openssh sudo btrfs-progs dosfstools efibootmgr \
-    qemu-guest-agent curl ca-certificates gnupg
+    qemu-guest-agent curl ca-certificates gnupg mkinitcpio iptables-nft
 
   gpgconf --homedir "${MOUNT}/etc/pacman.d/gnupg" --kill gpg-agent || true
   cp mirrorlist "${MOUNT}/etc/pacman.d/"
