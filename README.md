@@ -20,21 +20,31 @@ The repository bootstrap now runs from the in-repo `scripts/setup-blackarch-repo
 
 ## Requirements
 
-Build on an Arch Linux host with these packages available:
+Build on an Arch-based Linux host with these commands available:
 
 - `arch-install-scripts`
 - `btrfs-progs`
 - `ca-certificates`
 - `curl`
 - `dosfstools`
+- `e2fsprogs`
+- `gnupg`
 - `gptfdisk`
 - `qemu-img`
+- `systemd`
+- `util-linux`
 
-The build must be run as `root`.
+The build needs `root` privileges. `make` will run a preflight environment check first and then invoke `sudo ./build.sh` when needed.
 
 ## Usage
 
 Build the default image:
+
+```bash
+make
+```
+
+Or run the builder directly:
 
 ```bash
 sudo ./build.sh
@@ -56,6 +66,12 @@ Build with the curated `common` profile from the older `packer-blackarch` projec
 
 ```bash
 sudo BLACKARCH_PROFILE=common DISK_SIZE=20G ./build.sh
+```
+
+Run only the preflight checks:
+
+```bash
+make check-env
 ```
 
 ## Environment Variables
