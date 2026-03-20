@@ -38,6 +38,7 @@ Build on an Arch-based Linux host with these commands available:
 The build needs `root` privileges. `make` will run a preflight environment check first and, when started as a non-root user, prompt for your `sudo` password before launching `./build.sh`.
 The same preflight check also verifies that the filesystem containing this repository has enough free space for the selected build configuration. As a rule of thumb, keep at least `8 GiB` free for `core` builds and more for `common` or additional BlackArch packages.
 Each build also writes a versioned log file under `output/`. The console shows only high-level build steps and the final artifact paths, while detailed command output is written only to the log file.
+If the build is interrupted with `Ctrl+C`, the script cleans up temporary runtime artifacts such as mounts, loop devices, and the temporary build directory before exiting.
 
 ## Usage
 

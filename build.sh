@@ -3,6 +3,7 @@
 set -o nounset
 set -o errexit
 set -o pipefail
+set -o errtrace
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT
@@ -23,10 +24,36 @@ function status_line() {
 }
 
 function log_step() {
+  CURRENT_STEP="${1}"
   status_line "==> ${1}"
 }
 
+function handle_error() {
+  local exit_code=$?
 
+  if [ -n "${BUILD_LOG:-}" ]; then
+    status_line "Build failed during step: ${CURRENT_STEP:-unknown}"
+    status_line "See build log: ${BUILD_LOG}"
+  fi
+
+  exit "${exit_code}"
+}
+
+function handle_signal() {
+  local signal_name="${1}"
+  local exit_code="${2}"
+
+  trap - ERR INT TERM
+
+  status_line "Build interrupted by ${signal_name} during step: ${CURRENT_STEP:-unknown}"
+  status_line "Cleaning up temporary runtime artifacts..."
+
+  if [ -n "${BUILD_LOG:-}" ]; then
+    status_line "See build log: ${BUILD_LOG}"
+  fi
+
+  exit "${exit_code}"
+}
 
 function resolve_build_version() {
   if [ -z "${1:-}" ]; then
@@ -63,6 +90,9 @@ function setup_logging() {
     status_line "Falling back to ${build_version}"
   fi
 }
+trap handle_error ERR
+trap 'handle_signal SIGINT 130' INT
+trap 'handle_signal SIGTERM 143' TERM
 
 function init() {
   local tmpdir
