@@ -45,6 +45,7 @@ systemctl enable systemd-networkd
 systemctl enable systemd-resolved
 systemctl enable systemd-timesyncd
 systemctl enable systemd-time-wait-sync
+systemctl enable qemu-guest-agent
 systemctl enable pacman-init.service
 EOF
 

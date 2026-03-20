@@ -88,12 +88,15 @@ function next_default_build_version() {
 }
 
 function resolve_build_version() {
-  if [ -z "${1:-}" ]; then
-    build_version="$(next_default_build_version)"
-    build_version_was_defaulted=1
-  else
+  if [ -n "${1:-}" ]; then
     build_version="${1}"
     build_version_was_defaulted=0
+  elif [ -n "${BUILD_VERSION:-}" ]; then
+    build_version="${BUILD_VERSION}"
+    build_version_was_defaulted=0
+  else
+    build_version="$(next_default_build_version)"
+    build_version_was_defaulted=1
   fi
 
   readonly build_version
@@ -118,7 +121,7 @@ function setup_logging() {
   log_step "Writing build log to ${BUILD_LOG}"
 
   if [ "${build_version_was_defaulted}" -eq 1 ]; then
-    status_line "BUILD_VERSION wasn't set."
+    status_line "No explicit build version was provided."
     status_line "Auto-selected build version ${build_version}"
   fi
 }
