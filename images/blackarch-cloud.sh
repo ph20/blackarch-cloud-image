@@ -6,6 +6,43 @@ DISK_SIZE="${DISK_SIZE:-}"
 PACKAGES=(cloud-init cloud-guest-utils gptfdisk)
 SERVICES=(cloud-init-main.service cloud-init-local.service cloud-init-network.service cloud-config.service cloud-final.service)
 
+function install_blackarch_profile() {
+  local profile="${BLACKARCH_PROFILE:-core}"
+  local -a common_packages=(
+    mlocate
+    net-tools
+    strace
+    vim
+    rsync
+    sqlmap
+    nikto
+    nmap
+    hydra
+    medusa
+    metasploit
+    hping
+    wpscan
+    joomscan
+    masscan
+    zaproxy
+    libxtst
+    xorg-xauth
+    burpsuite
+  )
+
+  case "${profile}" in
+    core)
+      ;;
+    common)
+      arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed "${common_packages[@]}"
+      ;;
+    *)
+      echo "Unsupported BLACKARCH_PROFILE: ${profile}" >&2
+      return 1
+      ;;
+  esac
+}
+
 function pre() {
   local -a extra_blackarch_packages=()
   local -a strap_env=(/usr/bin/env)
@@ -25,6 +62,7 @@ function pre() {
   strap_env+=(/root/setup-blackarch-repo.sh)
   arch-chroot "${MOUNT}" "${strap_env[@]}"
   rm -f "${MOUNT}/root/setup-blackarch-repo.sh"
+  install_blackarch_profile
 
   if [ -n "${BLACKARCH_PACKAGES:-}" ]; then
     # shellcheck disable=SC2206

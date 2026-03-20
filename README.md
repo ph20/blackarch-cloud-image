@@ -14,7 +14,7 @@ The result is a compressed `qcow2` image with:
 - `qemu-guest-agent`
 - BlackArch repository configured inside the image
 
-By default the build enables the BlackArch repository but does not install the full BlackArch toolset. If you want packages baked into the image, pass them through `BLACKARCH_PACKAGES`.
+By default the build uses the `core` profile: the BlackArch repository is configured, but no extra BlackArch toolset is preinstalled. You can switch to `common`, and you can still append extra packages through `BLACKARCH_PACKAGES`.
 
 ## Requirements
 
@@ -50,8 +50,15 @@ Build with extra BlackArch packages preinstalled:
 sudo BLACKARCH_PACKAGES="blackarch-officials" DISK_SIZE=20G ./build.sh
 ```
 
+Build with the curated `common` profile from the older `packer-blackarch` project:
+
+```bash
+sudo BLACKARCH_PROFILE=common DISK_SIZE=20G ./build.sh
+```
+
 ## Environment Variables
 
+- `BLACKARCH_PROFILE`: one of `core`, `common`; defaults to `core`
 - `BLACKARCH_PACKAGES`: space-separated list of packages to install after the BlackArch repository is configured
 - `BLACKARCH_STRAP_URL`: override URL for the BlackArch bootstrap script
 - `BLACKARCH_STRAP_SHA256`: optional SHA256 checksum for the downloaded strap script
