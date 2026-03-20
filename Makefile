@@ -14,8 +14,8 @@ check-env:
 	bash ./scripts/check-build-env.sh
 
 lint:
-	bash -n build.sh images/*.sh scripts/*.sh
-	shellcheck build.sh images/*.sh scripts/*.sh
+	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh
+	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh
 
 clean:
 	rm -rf output tmp

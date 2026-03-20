@@ -16,6 +16,9 @@ readonly OUTPUT="${PROJECT_ROOT}/output"
 readonly TMP_ROOT="${PROJECT_ROOT}/tmp"
 readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
 
+# shellcheck source=scripts/lib/validation.sh
+source "${PROJECT_ROOT}/scripts/lib/validation.sh"
+
 function status_line() {
   if [ -n "${STATUS_FD_READY:-}" ]; then
     printf '%s\n' "${1}" >&3
@@ -315,6 +318,7 @@ function main() {
   fi
 
   resolve_build_version "${1:-}"
+  validate_build_configuration "${build_version}"
   setup_logging
 
   log_step "Initializing build workspace"

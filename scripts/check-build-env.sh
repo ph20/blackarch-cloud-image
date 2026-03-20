@@ -5,15 +5,18 @@ set -o errexit
 set -o pipefail
 
 readonly GIB=$((1024 * 1024 * 1024))
-readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
 readonly ARCH_MIRROR_URL="https://fastly.mirror.pkgbuild.com/core/os/x86_64/core.db"
 readonly BLACKARCH_MIRRORLIST_URL="https://blackarch.org/blackarch-mirrorlist"
-readonly BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
-readonly BLACKARCH_KEYRING_URL="https://www.blackarch.org/keyring/blackarch-keyring-${BLACKARCH_KEYRING_VERSION}.tar.gz"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
+
+# shellcheck source=scripts/lib/validation.sh
+source "${SCRIPT_DIR}/lib/validation.sh"
+
+readonly BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
+readonly BLACKARCH_KEYRING_URL="https://www.blackarch.org/keyring/blackarch-keyring-${BLACKARCH_KEYRING_VERSION}.tar.gz"
 
 FAILURES=0
 
@@ -211,6 +214,14 @@ function check_network_access() {
   check_url "BlackArch keyring archive is reachable" "${BLACKARCH_KEYRING_URL}"
 }
 
+function check_configuration() {
+  if validate_build_configuration "${BUILD_VERSION:-}"; then
+    report_ok "build configuration is valid"
+  else
+    report_fail "invalid build configuration"
+  fi
+}
+
 function print_summary() {
   if [ "${FAILURES}" -eq 0 ]; then
     printf 'Preflight summary: all checks passed.\n'
@@ -225,6 +236,7 @@ function main() {
   check_linux_host
   check_arch_family_host
   check_required_commands
+  check_configuration
   check_privilege_escalation
   check_loop_device_support
   check_free_space
