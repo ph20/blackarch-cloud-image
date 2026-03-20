@@ -10,9 +10,48 @@ readonly DEFAULT_DISK_SIZE="${DEFAULT_DISK_SIZE:-2G}"
 readonly IMAGE="image.img"
 # shellcheck disable=SC2016
 readonly MIRROR='https://fastly.mirror.pkgbuild.com/$repo/os/$arch'
+readonly IMAGE_NAME_PREFIX="BlackArch-Linux-x86_64-cloudimg"
 readonly OUTPUT="${PROJECT_ROOT}/output"
 readonly TMP_ROOT="${PROJECT_ROOT}/tmp"
 readonly PACSTRAP_GPGDIR="/etc/pacman.d/gnupg"
+
+function log_step() {
+  printf '\n==> %s\n' "${1}"
+}
+
+function resolve_build_version() {
+  if [ -z "${1:-}" ]; then
+    build_version="$(date +%Y%m%d).0"
+    build_version_was_defaulted=1
+  else
+    build_version="${1}"
+    build_version_was_defaulted=0
+  fi
+
+  readonly build_version
+  readonly build_version_was_defaulted
+}
+
+function setup_logging() {
+  mkdir -p "${OUTPUT}" "${TMP_ROOT}"
+
+  BUILD_LOG="${OUTPUT}/${IMAGE_NAME_PREFIX}-${build_version}.build.log"
+  readonly BUILD_LOG
+  : > "${BUILD_LOG}"
+
+  if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
+    chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${BUILD_LOG}"
+  fi
+
+  exec > >(tee -a "${BUILD_LOG}") 2>&1
+
+  log_step "Writing build log to ${BUILD_LOG}"
+
+  if [ "${build_version_was_defaulted}" -eq 1 ]; then
+    echo "WARNING: BUILD_VERSION wasn't set!"
+    echo "Falling back to ${build_version}"
+  fi
+}
 
 function init() {
   local tmpdir
@@ -170,7 +209,7 @@ function create_image() {
   fi
 
   if [ "${#PACKAGES[@]}" -gt 0 ]; then
-    arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed "${PACKAGES[@]}"
+    arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never "${PACKAGES[@]}"
   fi
 
   if [ "${#SERVICES[@]}" -gt 0 ]; then
@@ -186,32 +225,38 @@ function create_image() {
 }
 
 function main() {
-  local build_version
-
   if [ "$(id -u)" -ne 0 ]; then
     echo "root is required"
     exit 1
   fi
 
+  resolve_build_version "${1:-}"
+  setup_logging
+
+  log_step "Initializing build workspace"
   init
+
+  log_step "Creating raw disk image"
   setup_disk
+
+  log_step "Bootstrapping Arch Linux base system"
   bootstrap
 
   # shellcheck source=images/base.sh
   source "${PROJECT_ROOT}/images/base.sh"
+  log_step "Applying base image customizations"
   pre
   unmount_image
 
-  if [ -z "${1:-}" ]; then
-    build_version="$(date +%Y%m%d).0"
-    echo "WARNING: BUILD_VERSION wasn't set!"
-    echo "Falling back to ${build_version}"
-  else
-    build_version="${1}"
-  fi
-
   # shellcheck source=images/blackarch-cloud.sh
   source "${PROJECT_ROOT}/images/blackarch-cloud.sh"
+  log_step "Building final BlackArch cloud image"
   create_image "${IMAGE_NAME}"
+
+  log_step "Build completed"
+  printf 'Artifacts saved to: %s\n' "${OUTPUT}"
+  printf 'Image: %s/%s\n' "${OUTPUT}" "${IMAGE_NAME}"
+  printf 'Checksum: %s/%s.SHA256\n' "${OUTPUT}" "${IMAGE_NAME}"
+  printf 'Build log: %s\n' "${BUILD_LOG}"
 }
 main "${1:-}"

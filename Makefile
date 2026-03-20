@@ -26,7 +26,7 @@ help:
 		'Non-root builds prompt for sudo before running ./build.sh.' \
 		'' \
 		'Targets:' \
-		'  build      Run preflight checks and build the image (default; prompts for sudo when needed)' \
+		'  build      Run preflight checks, write a build log in output/, and build the image' \
 		'  check-env  Validate host requirements, sudo availability, and free space' \
 		'  lint       Run shell syntax checks and shellcheck' \
 		'  clean      Remove output/ and tmp/' \

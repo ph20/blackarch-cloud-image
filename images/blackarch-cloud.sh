@@ -6,6 +6,10 @@ DISK_SIZE="${DISK_SIZE:-}"
 PACKAGES=(cloud-init cloud-guest-utils gptfdisk)
 SERVICES=(cloud-init-main.service cloud-init-local.service cloud-init-network.service cloud-config.service cloud-final.service)
 
+function chroot_pacman_sync() {
+  arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
+}
+
 function install_blackarch_profile() {
   local profile="${BLACKARCH_PROFILE:-core}"
   local -a common_packages=(
@@ -34,7 +38,7 @@ function install_blackarch_profile() {
     core)
       ;;
     common)
-      arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed "${common_packages[@]}"
+      chroot_pacman_sync "${common_packages[@]}"
       ;;
     *)
       echo "Unsupported BLACKARCH_PROFILE: ${profile}" >&2
@@ -71,7 +75,7 @@ function pre() {
   if [ -n "${BLACKARCH_PACKAGES:-}" ]; then
     # shellcheck disable=SC2206
     extra_blackarch_packages=(${BLACKARCH_PACKAGES})
-    arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed "${extra_blackarch_packages[@]}"
+    chroot_pacman_sync "${extra_blackarch_packages[@]}"
   fi
 
   cat <<'EOF' >"${MOUNT}/etc/cloud/cloud.cfg.d/10_blackarch.cfg"

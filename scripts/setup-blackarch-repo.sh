@@ -22,6 +22,14 @@ function cleanup() {
 }
 trap cleanup EXIT
 
+function pacman_refresh() {
+  pacman -Syy --noconfirm --noprogressbar --color never
+}
+
+function pacman_sync() {
+  pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
+}
+
 function run_legacy_strap() {
   local strap_path="${WORKDIR}/strap.sh"
 
@@ -81,8 +89,8 @@ EOF
 }
 
 function sync_blackarch_repo() {
-  pacman -Syy
-  pacman -S --noconfirm --needed blackarch-mirrorlist
+  pacman_refresh
+  pacman_sync blackarch-mirrorlist
 
   if [ -f /etc/pacman.d/blackarch-mirrorlist.pacnew ]; then
     mv /etc/pacman.d/blackarch-mirrorlist.pacnew /etc/pacman.d/blackarch-mirrorlist

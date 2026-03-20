@@ -37,6 +37,7 @@ Build on an Arch-based Linux host with these commands available:
 
 The build needs `root` privileges. `make` will run a preflight environment check first and, when started as a non-root user, prompt for your `sudo` password before launching `./build.sh`.
 The same preflight check also verifies that the filesystem containing this repository has enough free space for the selected build configuration. As a rule of thumb, keep at least `8 GiB` free for `core` builds and more for `common` or additional BlackArch packages.
+Each build also writes a versioned log file under `output/`, and the console output is emitted as plain non-interactive text so progress bars do not take over the terminal.
 
 ## Usage
 
@@ -47,6 +48,8 @@ make
 ```
 
 When `make` is started as a non-root user, it will ask for `sudo` before the actual image build begins.
+The build output is simultaneously written to `output/BlackArch-Linux-x86_64-cloudimg-<version>.build.log`.
+At the end of the build, the script prints the output directory and the full paths of the generated artifacts.
 
 Or run the builder directly:
 
@@ -102,3 +105,4 @@ Artifacts are written to `output/`:
 
 - `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2`
 - `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2.SHA256`
+- `BlackArch-Linux-x86_64-cloudimg-<version>.build.log`
