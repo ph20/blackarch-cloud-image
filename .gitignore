@@ -1,3 +1,6 @@
 /output/
 /tmp/
-.idea
+.idea/*
+!.idea/.gitignore
+!.idea/blackarch-cloud-image.iml
+!.idea/modules.xml
