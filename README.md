@@ -50,6 +50,7 @@ make
 
 When `make` is started as a non-root user, it will ask for `sudo` before the actual image build begins.
 Detailed build output is written to `output/BlackArch-Linux-x86_64-cloudimg-<version>.build.log`.
+If `BUILD_VERSION` is omitted, the build automatically picks the first free date-based version for today, for example `20260320.0`, then `20260320.1`, and so on.
 At the end of the build, the script prints the output directory and the full paths of the generated artifacts.
 
 Or run the builder directly:

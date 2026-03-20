@@ -55,9 +55,41 @@ function handle_signal() {
   exit "${exit_code}"
 }
 
+function next_default_build_version() {
+  local build_date=''
+  local file_name=''
+  local version_tail=''
+  local release=''
+  local max_release=-1
+  local path=''
+
+  build_date="$(date +%Y%m%d)"
+
+  if [ -d "${OUTPUT}" ]; then
+    shopt -s nullglob
+
+    for path in "${OUTPUT}/${IMAGE_NAME_PREFIX}-${build_date}."*; do
+      file_name="$(basename "${path}")"
+      version_tail="${file_name#"${IMAGE_NAME_PREFIX}"-}"
+
+      if [[ "${version_tail}" =~ ^${build_date}\.([0-9]+)(\.|$) ]]; then
+        release="${BASH_REMATCH[1]}"
+
+        if [ "${release}" -gt "${max_release}" ]; then
+          max_release="${release}"
+        fi
+      fi
+    done
+
+    shopt -u nullglob
+  fi
+
+  printf '%s.%s\n' "${build_date}" "$((max_release + 1))"
+}
+
 function resolve_build_version() {
   if [ -z "${1:-}" ]; then
-    build_version="$(date +%Y%m%d).0"
+    build_version="$(next_default_build_version)"
     build_version_was_defaulted=1
   else
     build_version="${1}"
@@ -86,8 +118,8 @@ function setup_logging() {
   log_step "Writing build log to ${BUILD_LOG}"
 
   if [ "${build_version_was_defaulted}" -eq 1 ]; then
-    status_line "WARNING: BUILD_VERSION wasn't set!"
-    status_line "Falling back to ${build_version}"
+    status_line "BUILD_VERSION wasn't set."
+    status_line "Auto-selected build version ${build_version}"
   fi
 }
 trap handle_error ERR
