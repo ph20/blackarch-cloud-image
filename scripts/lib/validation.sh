@@ -37,17 +37,17 @@ function parse_size_to_bytes() {
 }
 
 function validate_build_version_value() {
-  local build_version="${1:-}"
+  local requested_build_version="${1:-}"
 
-  if [ -z "${build_version}" ]; then
+  if [ -z "${requested_build_version}" ]; then
     return 0
   fi
 
-  if [[ "${build_version}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
+  if [[ "${requested_build_version}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
     return 0
   fi
 
-  validation_fail "BUILD_VERSION must match YYYYMMDD.N (got: ${build_version})"
+  validation_fail "BUILD_VERSION must match YYYYMMDD.N (got: ${requested_build_version})"
 }
 
 function validate_size_value() {
@@ -164,9 +164,9 @@ function validate_image_customization_configuration() {
 }
 
 function validate_build_configuration() {
-  local build_version="${1:-}"
+  local requested_build_version="${1:-}"
 
-  validate_build_version_value "${build_version}" || return 1
+  validate_build_version_value "${requested_build_version}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1
   validate_blackarch_profile_value "${BLACKARCH_PROFILE:-core}" || return 1
