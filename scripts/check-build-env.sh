@@ -182,7 +182,17 @@ function check_url() {
   local label="${1}"
   local url="${2}"
 
-  if curl -fsSLI --connect-timeout 10 --retry 2 "${url}" >/dev/null; then
+  if curl \
+    --fail \
+    --show-error \
+    --silent \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    --connect-timeout 10 \
+    --retry 2 \
+    --output /dev/null \
+    "${url}"; then
     report_ok "${label}"
   else
     report_fail "${label}: ${url}"

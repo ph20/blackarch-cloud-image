@@ -59,6 +59,10 @@ function pre() {
     setup_env+=("BLACKARCH_KEYRING_VERSION=${BLACKARCH_KEYRING_VERSION}")
   fi
 
+  if [ -n "${BLACKARCH_KEYRING_SHA256:-}" ]; then
+    setup_env+=("BLACKARCH_KEYRING_SHA256=${BLACKARCH_KEYRING_SHA256}")
+  fi
+
   if [ -n "${BLACKARCH_STRAP_URL:-}" ]; then
     setup_env+=("BLACKARCH_STRAP_URL=${BLACKARCH_STRAP_URL}")
   fi
