@@ -153,7 +153,7 @@ function init() {
   readonly TMPDIR="${tmpdir}"
 
   if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
-    chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${TMPDIR}"
+    chown "${SUDO_UID}:${SUDO_GID}" "${OUTPUT}" "${TMP_ROOT}" "${TMPDIR}"
   fi
 
   cd "${TMPDIR}"
