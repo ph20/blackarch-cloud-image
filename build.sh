@@ -164,12 +164,12 @@ function init() {
 function cleanup() {
   set +o errexit
 
-  if [ -n "${MOUNT:-}" ] && mountpoint -q "${MOUNT}"; then
-    umount --recursive "${MOUNT}" || true
+  if [ -n "${MOUNT:-}" ]; then
+    unmount_mount_tree "${MOUNT}" || true
   fi
 
   if [ -n "${LOOPDEV:-}" ]; then
-    losetup -d "${LOOPDEV}" || true
+    detach_loop_device "${LOOPDEV}" || true
   fi
 
   if [ -n "${TMPDIR:-}" ] && [ -d "${TMPDIR}" ]; then
@@ -177,6 +177,38 @@ function cleanup() {
   fi
 }
 trap cleanup EXIT
+
+function unmount_mount_tree() {
+  local mount_root="${1}"
+
+  if ! mountpoint -q "${mount_root}"; then
+    return 0
+  fi
+
+  if umount --recursive "${mount_root}"; then
+    return 0
+  fi
+
+  status_line "Standard unmount failed for ${mount_root}; retrying with lazy unmount."
+  umount --recursive --lazy "${mount_root}"
+}
+
+function detach_loop_device() {
+  local loop_device="${1}"
+  local retries=3
+
+  while [ "${retries}" -gt 0 ]; do
+    if losetup -d "${loop_device}" 2>/dev/null; then
+      return 0
+    fi
+
+    udevadm settle || true
+    sleep 1
+    retries=$((retries - 1))
+  done
+
+  losetup -d "${loop_device}"
+}
 
 function wait_until_settled() {
   udevadm settle
@@ -278,12 +310,10 @@ function mount_image() {
 }
 
 function unmount_image() {
-  if mountpoint -q "${MOUNT}"; then
-    umount --recursive "${MOUNT}"
-  fi
+  unmount_mount_tree "${MOUNT}"
 
   if [ -n "${LOOPDEV:-}" ]; then
-    losetup -d "${LOOPDEV}"
+    detach_loop_device "${LOOPDEV}"
     LOOPDEV=""
   fi
 }
