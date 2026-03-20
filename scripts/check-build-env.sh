@@ -4,11 +4,16 @@ set -o nounset
 set -o errexit
 set -o pipefail
 
+readonly GIB=$((1024 * 1024 * 1024))
 readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
 readonly ARCH_MIRROR_URL="https://fastly.mirror.pkgbuild.com/core/os/x86_64/core.db"
 readonly BLACKARCH_MIRRORLIST_URL="https://blackarch.org/blackarch-mirrorlist"
 readonly BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 readonly BLACKARCH_KEYRING_URL="https://www.blackarch.org/keyring/blackarch-keyring-${BLACKARCH_KEYRING_VERSION}.tar.gz"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly PROJECT_ROOT
 
 FAILURES=0
 
@@ -76,6 +81,10 @@ function check_required_commands() {
   local -a missing_commands=()
   local cmd=''
 
+  if [ "$(id -u)" -ne 0 ]; then
+    required_commands+=(sudo)
+  fi
+
   for cmd in "${required_commands[@]}"; do
     if ! command -v "${cmd}" >/dev/null 2>&1; then
       missing_commands+=("${cmd}")
@@ -96,7 +105,7 @@ function check_privilege_escalation() {
   fi
 
   if command -v sudo >/dev/null 2>&1; then
-    report_ok "sudo is available for privileged build steps"
+    report_ok "sudo is available; make will prompt for your password before privileged build steps"
   else
     report_fail "sudo is required when the build is not started as root"
   fi
@@ -107,6 +116,65 @@ function check_loop_device_support() {
     report_ok "loop device support is available"
   else
     report_fail "loop devices are unavailable on the host"
+  fi
+}
+
+function format_bytes() {
+  numfmt --to=iec-i --suffix=B "${1}"
+}
+
+function estimate_required_free_space_bytes() {
+  local required_bytes=$((8 * GIB))
+  local profile="${BLACKARCH_PROFILE:-core}"
+
+  # The build uses sparse raw images, so the estimate tracks package footprint
+  # and temporary artifacts rather than the logical DISK_SIZE alone.
+  case "${profile}" in
+    core | '')
+      ;;
+    common)
+      required_bytes=$((required_bytes + 4 * GIB))
+      ;;
+    *)
+      required_bytes=$((required_bytes + 4 * GIB))
+      ;;
+  esac
+
+  if [ -n "${BLACKARCH_PACKAGES:-}" ]; then
+    required_bytes=$((required_bytes + 4 * GIB))
+  fi
+
+  printf '%s\n' "${required_bytes}"
+}
+
+function check_free_space() {
+  local available_bytes=''
+  local required_bytes=''
+  local available_human=''
+  local required_human=''
+  local scope_description='for the selected build configuration'
+
+  available_bytes="$(df --output=avail -B1 "${PROJECT_ROOT}" | awk 'NR == 2 { print $1 }')"
+
+  if ! [[ "${available_bytes}" =~ ^[0-9]+$ ]]; then
+    report_fail "cannot determine free space on ${PROJECT_ROOT}"
+    return
+  fi
+
+  required_bytes="$(estimate_required_free_space_bytes)"
+  available_human="$(format_bytes "${available_bytes}")"
+  required_human="$(format_bytes "${required_bytes}")"
+
+  if [ -n "${BLACKARCH_PACKAGES:-}" ]; then
+    scope_description='for the selected build configuration with extra BlackArch packages'
+  elif [ "${BLACKARCH_PROFILE:-core}" = "common" ]; then
+    scope_description='for BLACKARCH_PROFILE=common'
+  fi
+
+  if [ "${available_bytes}" -ge "${required_bytes}" ]; then
+    report_ok "workspace filesystem has ${available_human} free (estimated minimum ${required_human} ${scope_description})"
+  else
+    report_fail "workspace filesystem has ${available_human} free, below the estimated minimum ${required_human} ${scope_description}"
   fi
 }
 
@@ -149,6 +217,7 @@ function main() {
   check_required_commands
   check_privilege_escalation
   check_loop_device_support
+  check_free_space
   check_network_access
   print_summary
 }

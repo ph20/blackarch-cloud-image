@@ -31,10 +31,12 @@ Build on an Arch-based Linux host with these commands available:
 - `gnupg`
 - `gptfdisk`
 - `qemu-img`
+- `sudo` when the build is not started as `root`
 - `systemd`
 - `util-linux`
 
-The build needs `root` privileges. `make` will run a preflight environment check first and then invoke `sudo ./build.sh` when needed.
+The build needs `root` privileges. `make` will run a preflight environment check first and, when started as a non-root user, prompt for your `sudo` password before launching `./build.sh`.
+The same preflight check also verifies that the filesystem containing this repository has enough free space for the selected build configuration. As a rule of thumb, keep at least `8 GiB` free for `core` builds and more for `common` or additional BlackArch packages.
 
 ## Usage
 
@@ -43,6 +45,8 @@ Build the default image:
 ```bash
 make
 ```
+
+When `make` is started as a non-root user, it will ask for `sudo` before the actual image build begins.
 
 Or run the builder directly:
 
@@ -72,6 +76,14 @@ Run only the preflight checks:
 
 ```bash
 make check-env
+```
+
+`make check-env` validates host commands, loop devices, network reachability, `sudo` availability when needed, and estimated free space on the repository filesystem.
+
+Show the available `make` targets:
+
+```bash
+make help
 ```
 
 ## Environment Variables
