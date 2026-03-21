@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034,SC2154
-
-IMAGE_NAME="BlackArch-Linux-x86_64-cloudimg-${build_version}.qcow2"
-DISK_SIZE="${DISK_SIZE:-}"
-PACKAGES=(cloud-init cloud-guest-utils gptfdisk)
-SERVICES=(cloud-init-main.service cloud-init-local.service cloud-init-network.service cloud-config.service cloud-final.service)
+# shellcheck disable=SC2154
 
 function chroot_pacman_sync() {
-  arch-chroot "${MOUNT}" /usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
+  local -a pacman_command=(/usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never)
+
+  if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
+    pacman_command+=(--config "${TARGET_PACMAN_CONFIG}")
+  fi
+
+  log_command arch-chroot "${TARGET_ROOT}" "${pacman_command[@]}" "${@}"
+  arch-chroot "${TARGET_ROOT}" "${pacman_command[@]}" "${@}"
 }
 
 function install_blackarch_profile() {
@@ -40,7 +42,7 @@ function install_blackarch_profile() {
       chroot_pacman_sync "${common_packages[@]}"
       ;;
     *)
-      echo "Unsupported BLACKARCH_PROFILE: ${RESOLVED_BLACKARCH_PROFILE}" >&2
+      printf 'Unsupported BLACKARCH_PROFILE: %s\n' "${RESOLVED_BLACKARCH_PROFILE}" >&2
       return 1
       ;;
   esac
@@ -57,14 +59,21 @@ function default_user_sudo_policy() {
   esac
 }
 
-function pre() {
+function configure_blackarch_rootfs() {
   local -a extra_blackarch_packages=()
+  local -a cloud_init_services=(
+    cloud-init-main.service
+    cloud-init-local.service
+    cloud-init-network.service
+    cloud-config.service
+    cloud-final.service
+  )
   local -a setup_env=(/usr/bin/env)
   local default_user_sudo=''
 
-  install -Dm0755 \
+  run_logged install -Dm0755 \
     "${PROJECT_ROOT}/scripts/setup-blackarch-repo.sh" \
-    "${MOUNT}/root/setup-blackarch-repo.sh"
+    "${TARGET_ROOT}/root/setup-blackarch-repo.sh"
 
   if [ -n "${BLACKARCH_KEYRING_VERSION:-}" ]; then
     setup_env+=("BLACKARCH_KEYRING_VERSION=${BLACKARCH_KEYRING_VERSION}")
@@ -82,20 +91,25 @@ function pre() {
     setup_env+=("BLACKARCH_STRAP_SHA256=${BLACKARCH_STRAP_SHA256}")
   fi
 
+  if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
+    setup_env+=("BLACKARCH_PACMAN_CONFIG=${TARGET_PACMAN_CONFIG}")
+  fi
+
   setup_env+=(/root/setup-blackarch-repo.sh)
-  arch-chroot "${MOUNT}" "${setup_env[@]}"
-  rm -f "${MOUNT}/root/setup-blackarch-repo.sh"
+  log_command arch-chroot "${TARGET_ROOT}" "${setup_env[@]}"
+  arch-chroot "${TARGET_ROOT}" "${setup_env[@]}"
+  run_logged rm -f "${TARGET_ROOT}/root/setup-blackarch-repo.sh"
+
   install_blackarch_profile
 
   if [ -n "${BLACKARCH_PACKAGES:-}" ]; then
-    # shellcheck disable=SC2206
-    extra_blackarch_packages=(${BLACKARCH_PACKAGES})
+    read -r -a extra_blackarch_packages <<<"${BLACKARCH_PACKAGES}"
     chroot_pacman_sync "${extra_blackarch_packages[@]}"
   fi
 
   default_user_sudo="$(default_user_sudo_policy)"
 
-  cat <<EOF >"${MOUNT}/etc/cloud/cloud.cfg.d/10_blackarch.cfg"
+  cat <<EOF >"${TARGET_ROOT}/etc/cloud/cloud.cfg.d/10_blackarch.cfg"
 users:
   - default
 disable_root: true
@@ -111,15 +125,7 @@ system_info:
     shell: /bin/bash
 EOF
 
-  arch-chroot "${MOUNT}" /usr/bin/passwd -l root || true
-
-  sed -Ei 's/^(GRUB_CMDLINE_LINUX_DEFAULT=.*)"$/\1 console=tty0 console=ttyS0,115200"/' "${MOUNT}/etc/default/grub"
-  echo 'GRUB_TERMINAL="serial console"' >>"${MOUNT}/etc/default/grub"
-  echo 'GRUB_SERIAL_COMMAND="serial --speed=115200"' >>"${MOUNT}/etc/default/grub"
-  arch-chroot "${MOUNT}" /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg
-}
-
-function post() {
-  qemu-img convert -c -f raw -O qcow2 "${1}" "${2}"
-  rm -f "${1}"
+  log_command arch-chroot "${TARGET_ROOT}" /usr/bin/passwd -l root
+  arch-chroot "${TARGET_ROOT}" /usr/bin/passwd -l root || true
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/systemctl --quiet enable "${cloud_init_services[@]}"
 }

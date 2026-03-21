@@ -8,8 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
-IMAGE_NAME_PREFIX="BlackArch-Linux-x86_64-cloudimg"
-readonly IMAGE_NAME_PREFIX
 OUTPUT_ROOT="${PROJECT_ROOT}/output"
 readonly OUTPUT_ROOT
 TMP_ROOT="${PROJECT_ROOT}/tmp"
@@ -71,19 +69,45 @@ function require_root_for_cleanup() {
 
 function unmount_tmp_mounts() {
   local target=''
+  local attempts=3
 
-  while IFS= read -r target; do
-    if [ -z "${target}" ]; then
-      continue
+  while [ "${attempts}" -gt 0 ]; do
+    while IFS= read -r target; do
+      if [ -z "${target}" ]; then
+        continue
+      fi
+
+      if umount "${target}" 2>/dev/null; then
+        continue
+      fi
+
+      printf 'Unmounting busy target with lazy unmount: %s\n' "${target}"
+      umount --lazy "${target}"
+    done < <(mount_targets_under_tmp)
+
+    if [ -z "$(mount_targets_under_tmp)" ]; then
+      return 0
     fi
 
-    if umount "${target}" 2>/dev/null; then
-      continue
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+}
+
+function remove_tmp_tree() {
+  local attempts=3
+
+  while [ "${attempts}" -gt 0 ]; do
+    if rm -rf --one-file-system "${TMP_ROOT}" 2>/dev/null; then
+      return 0
     fi
 
-    printf 'Unmounting busy target with lazy unmount: %s\n' "${target}"
-    umount --lazy "${target}"
-  done < <(mount_targets_under_tmp)
+    unmount_tmp_mounts
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+
+  rm -rf --one-file-system "${TMP_ROOT}"
 }
 
 function detach_tmp_loop_devices() {
@@ -99,20 +123,12 @@ function detach_tmp_loop_devices() {
 }
 
 function remove_output_artifacts() {
-  local artifact_path=''
-
   if [ ! -d "${OUTPUT_ROOT}" ]; then
     return 0
   fi
 
-  while IFS= read -r artifact_path; do
-    if [ -z "${artifact_path}" ]; then
-      continue
-    fi
-
-    rm -f "${artifact_path}"
-  done < <(find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name "${IMAGE_NAME_PREFIX}-*" -print)
-
+  rm -rf "${OUTPUT_ROOT}/rootfs" "${OUTPUT_ROOT}/images"
+  find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name 'BlackArch-Linux-x86_64-cloudimg-*' -delete
   rmdir "${OUTPUT_ROOT}" 2>/dev/null || true
 }
 
@@ -122,7 +138,7 @@ function main() {
   if [ -d "${TMP_ROOT}" ]; then
     unmount_tmp_mounts
     detach_tmp_loop_devices
-    rm -rf "${TMP_ROOT}"
+    remove_tmp_tree
   fi
 
   remove_output_artifacts

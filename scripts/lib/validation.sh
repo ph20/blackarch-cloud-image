@@ -3,6 +3,7 @@
 readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
 readonly MIN_IMAGE_SIZE_BYTES=$((2 * 1024 * 1024 * 1024))
 readonly MIN_SWAP_SIZE_BYTES=$((64 * 1024 * 1024))
+readonly MIN_PARTITION_SIZE_BYTES=$((1024 * 1024))
 
 function validation_fail() {
   echo "${1}" >&2
@@ -36,18 +37,51 @@ function parse_size_to_bytes() {
   numfmt --from=iec "${size_value}"
 }
 
+function validate_release_version_value() {
+  local requested_release_version="${1:-}"
+
+  if [ -z "${requested_release_version}" ]; then
+    validation_fail "release version is required and must come from VERSION"
+    return 1
+  fi
+
+  if [[ "${requested_release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    return 0
+  fi
+
+  validation_fail "release version in VERSION must match SemVer such as 0.4.0 or 1.0.0-rc.1 (got: ${requested_release_version})"
+}
+
+function validate_build_id_value() {
+  local requested_build_id="${1:-}"
+
+  if [ -z "${requested_build_id}" ]; then
+    return 0
+  fi
+
+  if [[ "${requested_build_id}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
+    return 0
+  fi
+
+  validation_fail "BUILD_ID must match YYYYMMDD.N (got: ${requested_build_id})"
+}
+
 function validate_build_version_value() {
-  local requested_build_version="${1:-}"
+  validate_build_id_value "${1:-}"
+}
 
-  if [ -z "${requested_build_version}" ]; then
-    return 0
-  fi
+function validate_reuse_rootfs_value() {
+  local reuse_rootfs="${1:-false}"
 
-  if [[ "${requested_build_version}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
-    return 0
-  fi
-
-  validation_fail "BUILD_VERSION must match YYYYMMDD.N (got: ${requested_build_version})"
+  case "${reuse_rootfs}" in
+    '' | true | false)
+      return 0
+      ;;
+    *)
+      validation_fail "REUSE_ROOTFS must be 'true' or 'false' (got: ${reuse_rootfs})"
+      return 1
+      ;;
+  esac
 }
 
 function validate_size_value() {
@@ -70,6 +104,26 @@ function validate_size_value() {
   fi
 }
 
+function validate_partition_size_value() {
+  local env_name="${1}"
+  local size_value="${2:-}"
+  local size_bytes=''
+
+  if [ -z "${size_value}" ]; then
+    return 0
+  fi
+
+  if ! size_bytes="$(parse_size_to_bytes "${size_value}")"; then
+    validation_fail "${env_name} must be a truncate-compatible size such as 300M or 1G (got: ${size_value})"
+    return 1
+  fi
+
+  if [ "${size_bytes}" -lt "${MIN_PARTITION_SIZE_BYTES}" ]; then
+    validation_fail "${env_name} must be at least 1M (got: ${size_value})"
+    return 1
+  fi
+}
+
 function validate_blackarch_profile_value() {
   local profile="${1:-core}"
 
@@ -79,6 +133,62 @@ function validate_blackarch_profile_value() {
       ;;
     *)
       validation_fail "BLACKARCH_PROFILE must be one of: core, common (got: ${profile})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_image_profile_value() {
+  local profile="${1:-generic-qemu}"
+
+  case "${profile}" in
+    generic-qemu | digitalocean)
+      return 0
+      ;;
+    *)
+      validation_fail "IMAGE_PROFILE must be one of: generic-qemu, digitalocean (got: ${profile})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_root_fs_type_value() {
+  local root_fs_type="${1}"
+
+  case "${root_fs_type}" in
+    btrfs | ext4)
+      return 0
+      ;;
+    *)
+      validation_fail "profile root filesystem type must be one of: btrfs, ext4 (got: ${root_fs_type})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_final_format_value() {
+  local final_format="${1}"
+
+  case "${final_format}" in
+    qcow2 | raw.gz | img.gz)
+      return 0
+      ;;
+    *)
+      validation_fail "profile final image format must be one of: qcow2, raw.gz, img.gz (got: ${final_format})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_boot_mode_value() {
+  local boot_mode="${1}"
+
+  case "${boot_mode}" in
+    bios | bios+uefi)
+      return 0
+      ;;
+    *)
+      validation_fail "PROFILE_BOOT_MODE must be one of: bios, bios+uefi (got: ${boot_mode})"
       return 1
       ;;
   esac
@@ -164,9 +274,13 @@ function validate_image_customization_configuration() {
 }
 
 function validate_build_configuration() {
-  local requested_build_version="${1:-}"
+  local requested_release_version="${1:-}"
+  local requested_build_id="${2:-}"
 
-  validate_build_version_value "${requested_build_version}" || return 1
+  validate_release_version_value "${requested_release_version}" || return 1
+  validate_build_id_value "${requested_build_id}" || return 1
+  validate_reuse_rootfs_value "${REUSE_ROOTFS:-false}" || return 1
+  validate_image_profile_value "${IMAGE_PROFILE:-generic-qemu}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1
   validate_blackarch_profile_value "${BLACKARCH_PROFILE:-core}" || return 1

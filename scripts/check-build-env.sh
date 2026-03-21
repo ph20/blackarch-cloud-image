@@ -12,8 +12,8 @@ readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
 
-# shellcheck source=scripts/lib/validation.sh
-source "${SCRIPT_DIR}/lib/validation.sh"
+# shellcheck source=scripts/lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
 
 readonly BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 readonly BLACKARCH_KEYRING_URL="https://www.blackarch.org/keyring/blackarch-keyring-${BLACKARCH_KEYRING_VERSION}.tar.gz"
@@ -40,16 +40,21 @@ function check_linux_host() {
 function check_arch_family_host() {
   local os_id=''
   local os_like=''
+  local os_release_fields=''
 
   if [ ! -r /etc/os-release ]; then
     report_fail "cannot read /etc/os-release to detect the host distribution"
     return
   fi
 
-  # shellcheck disable=SC1091
-  source /etc/os-release
-  os_id="${ID:-}"
-  os_like="${ID_LIKE:-}"
+  os_release_fields="$(
+    # shellcheck disable=SC1091
+    (
+      source /etc/os-release
+      printf '%s\t%s\n' "${ID:-}" "${ID_LIKE:-}"
+    )
+  )"
+  IFS=$'\t' read -r os_id os_like <<<"${os_release_fields}"
 
   if printf '%s\n' "${os_id} ${os_like}" | grep -Eq '(^|[[:space:]])(arch|manjaro)($|[[:space:]])'; then
     report_ok "host distribution is Arch-based (${os_id:-unknown})"
@@ -62,14 +67,12 @@ function check_required_commands() {
   local -a required_commands=(
     arch-chroot
     blockdev
-    btrfs
-    chattr
     curl
     fstrim
     gpgconf
+    gzip
     losetup
-    mkfs.btrfs
-    mkfs.fat
+    mkfs.ext4
     mount
     mountpoint
     pacman
@@ -77,12 +80,28 @@ function check_required_commands() {
     qemu-img
     sha256sum
     sgdisk
+    tar
     truncate
     udevadm
     umount
+    zstd
   )
   local -a missing_commands=()
   local cmd=''
+  local root_fs_type="${RESOLVED_IMAGE_ROOT_FS_TYPE:-}"
+  local boot_mode="${RESOLVED_IMAGE_BOOT_MODE:-}"
+
+  case "${root_fs_type}" in
+    btrfs | '')
+      required_commands+=(btrfs chattr mkfs.btrfs)
+      ;;
+  esac
+
+  case "${boot_mode}" in
+    bios+uefi | '')
+      required_commands+=(mkfs.fat)
+      ;;
+  esac
 
   if [ "$(id -u)" -ne 0 ]; then
     required_commands+=(sudo)
@@ -215,7 +234,7 @@ function check_network_access() {
 }
 
 function check_configuration() {
-  if validate_build_configuration "${BUILD_VERSION:-}"; then
+  if resolve_build_context; then
     report_ok "build configuration is valid"
   else
     report_fail "invalid build configuration"
@@ -235,8 +254,8 @@ function print_summary() {
 function main() {
   check_linux_host
   check_arch_family_host
-  check_required_commands
   check_configuration
+  check_required_commands
   check_privilege_escalation
   check_loop_device_support
   check_free_space
