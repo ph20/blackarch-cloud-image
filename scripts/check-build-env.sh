@@ -67,6 +67,7 @@ function check_required_commands() {
     curl
     fstrim
     gpgconf
+    gzip
     losetup
     mkfs.btrfs
     mkfs.fat
@@ -77,9 +78,11 @@ function check_required_commands() {
     qemu-img
     sha256sum
     sgdisk
+    tar
     truncate
     udevadm
     umount
+    zstd
   )
   local -a missing_commands=()
   local cmd=''

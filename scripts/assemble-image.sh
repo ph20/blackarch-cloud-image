@@ -15,6 +15,8 @@ source "${SCRIPT_DIR}/lib/config.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 # shellcheck source=scripts/lib/mounts.sh
 source "${SCRIPT_DIR}/lib/mounts.sh"
+# shellcheck source=scripts/lib/profile.sh
+source "${SCRIPT_DIR}/lib/profile.sh"
 
 function cleanup() {
   set +o errexit
@@ -62,6 +64,9 @@ function main() {
 
   log_step "Stage 2: applying bootable disk customization"
   configure_base_image
+
+  log_step "Stage 2: applying ${RESOLVED_IMAGE_PROFILE} profile customization"
+  apply_profile_image_customization
 
   log_step "Stage 2: finalizing raw staging image"
   finalize_base_image
