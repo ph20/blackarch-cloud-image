@@ -23,10 +23,12 @@ clean:
 help:
 	@printf '%s\n' \
 		'Usage: make [target] [BUILD_VERSION=<version>]' \
+		'Default profile: IMAGE_PROFILE=generic-qemu.' \
 		'Non-root builds prompt for sudo before running ./build.sh.' \
+		'Use direct sudo ./build.sh invocations for non-default environment overrides.' \
 		'' \
 		'Targets:' \
-		'  build      Run preflight checks, write a build log in output/, and show only high-level build steps' \
+		'  build      Run the staged build pipeline and write artifacts under output/rootfs and output/images' \
 		'  check-env  Validate host requirements, sudo availability, and free space' \
 		'  lint       Run shell syntax checks and shellcheck' \
 		'  clean      Unmount stale tmp/ build leftovers, remove tmp/, and delete versioned build artifacts from output/' \

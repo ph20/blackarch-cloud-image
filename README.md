@@ -1,56 +1,73 @@
 # blackarch-cloud-image
 
-Build a `qcow2` BlackArch cloud image from an Arch-based Linux host.
+Build staged BlackArch cloud images from an Arch-based Linux host.
 
-This project combines:
+The build flow is intentionally shell-only:
 
-- the modern disk/bootstrap/cloud-image flow from `arch-boxes`
-- the BlackArch repository bootstrap idea from `blackarch-virtualization`
-- an in-repo BlackArch setup path that avoids executing `https://blackarch.org/strap.sh` by default
+1. Stage 1 builds a reusable Arch + BlackArch rootfs artifact.
+2. Stage 2 assembles a bootable raw disk image for a selected platform profile.
+3. Stage 3 exports the final profile-specific artifact.
 
-The output is a compressed `qcow2` image intended for cloud or VM environments where `cloud-init` is available.
+Supported platform profiles:
 
-## What the image contains
+- `generic-qemu`
+  Exports `qcow2` and enables `qemu-guest-agent`.
+- `digitalocean`
+  Exports `raw.gz` and disables `qemu-guest-agent`.
 
-The generated image includes:
+The profile layer is intentionally small today. Future platforms should be added by introducing new profile files and localized profile logic, not by cloning the whole pipeline.
+
+Runtime boot validation is not implemented yet. This repository only builds the staged artifacts.
+
+## What the build contains
+
+The common rootfs stage includes:
 
 - Arch Linux base system
-- BlackArch repository configured inside the image
 - `cloud-init`
-- optional `qemu-guest-agent` support via `IMAGE_ENABLE_QEMU_GUEST_AGENT=true`
+- `openssh`
+- BlackArch repository bootstrap using the in-repo setup script by default
+- the selected BlackArch logical profile: `core` or `common`
+- optional extra packages from `BLACKARCH_PACKAGES`
+
+The assembled image includes:
+
 - Btrfs root filesystem with Zstandard compression
-- GRUB configured for both BIOS and UEFI boot
-- serial console support on `ttyS0`
-- `systemd-networkd`, `systemd-resolved`, and `sshd`
-
-By default, the build uses the `core` BlackArch profile: the repository is enabled, but no extra BlackArch toolset is preinstalled.
-
-You can also:
-
-- switch to the curated `common` profile
-- append your own packages with `BLACKARCH_PACKAGES`
-- resize the final image with `DISK_SIZE`
-- pin the build artifact version with `BUILD_VERSION` or an explicit `build.sh` argument
+- GRUB configured for BIOS and UEFI boot
+- serial console on `tty0` and `ttyS0`
+- `systemd-networkd`, `systemd-resolved`, `systemd-timesyncd`, and `sshd`
 
 ## Project layout
 
 ```text
 .
-├── build.sh                         # Main builder entrypoint
-├── Makefile                         # Helper targets: build, check-env, lint, clean
+├── build.sh                         # Thin user-facing orchestrator
+├── profiles/
+│   ├── digitalocean.env             # raw.gz export, qemu guest agent disabled
+│   └── generic-qemu.env             # qcow2 export, qemu guest agent enabled
 ├── images/
-│   ├── base.sh                      # Base image customization shared by variants
-│   └── blackarch-cloud.sh           # BlackArch + cloud-init customization
-└── scripts/
-    ├── check-build-env.sh           # Preflight validation for host, tools, space, network
-    └── setup-blackarch-repo.sh      # In-image BlackArch repository bootstrap
+│   ├── base.sh                      # Common rootfs and bootable disk customization hooks
+│   └── blackarch-cloud.sh           # BlackArch repo/profile + cloud-init customization
+├── scripts/
+│   ├── build-rootfs.sh              # Stage 1: build reusable rootfs artifact
+│   ├── assemble-image.sh            # Stage 2: assemble bootable raw staging image
+│   ├── export-image.sh              # Stage 3: export final profile artifact
+│   ├── check-build-env.sh           # Host preflight checks
+│   ├── clean-build-state.sh         # Remove tmp/ leftovers and output artifacts
+│   ├── setup-blackarch-repo.sh      # In-image BlackArch repository bootstrap
+│   └── lib/                         # Shared config, logging, manifests, mounts, validation
+└── Makefile                         # Convenience targets
 ```
 
 ## Requirements
 
-Build on an Arch-based Linux host.
+Build on an Arch-based Linux host with:
 
-The following commands must be available:
+- root privileges for loop devices, mounts, package installation, and image creation
+- network access to Arch package mirrors and BlackArch resources
+- enough free disk space for the selected profile and package set
+
+Required commands:
 
 - `arch-chroot`
 - `blockdev`
@@ -59,6 +76,7 @@ The following commands must be available:
 - `curl`
 - `fstrim`
 - `gpgconf`
+- `gzip`
 - `losetup`
 - `mkfs.btrfs`
 - `mkfs.fat`
@@ -69,187 +87,141 @@ The following commands must be available:
 - `qemu-img`
 - `sha256sum`
 - `sgdisk`
+- `tar`
 - `truncate`
 - `udevadm`
 - `umount`
+- `zstd`
 - `sudo` when the build is started as a non-root user
 
-Additional practical requirements:
-
-- root privileges for loop devices, mounts, package installation, and image creation
-- network access to Arch package mirrors and BlackArch resources
-- enough free disk space on the filesystem that contains this repository
-
-As a rule of thumb, keep at least:
-
-- about **8 GiB** free for the default `core` profile
-- more for `BLACKARCH_PROFILE=common`
-- even more when using `BLACKARCH_PACKAGES` or a larger `DISK_SIZE`
-
-Run the preflight checks before the first build:
+Run the preflight checks before building:
 
 ```bash
 make check-env
 ```
 
-## Quick start
-
-Build the default image:
-
-```bash
-make
-```
-
-If `make` is started as a non-root user, it will validate the environment first and then ask for `sudo` before invoking `./build.sh`.
-
-The build writes detailed logs to `output/`, while the console shows only high-level progress.
-
 ## Build examples
 
-### Default build
+Default build for `generic-qemu`:
 
 ```bash
-make
+sudo IMAGE_PROFILE=generic-qemu ./build.sh
 ```
 
-### Explicit build version
+DigitalOcean export:
 
 ```bash
-make BUILD_VERSION=20260320.0
+sudo IMAGE_PROFILE=digitalocean ./build.sh
 ```
 
-You can also run the builder directly:
+Explicit build version:
 
 ```bash
-sudo ./build.sh 20260320.0
+sudo IMAGE_PROFILE=generic-qemu ./build.sh 20260320.0
 ```
 
-### Install the curated `common` BlackArch profile
+Curated `common` BlackArch profile:
 
 ```bash
-sudo BLACKARCH_PROFILE=common DISK_SIZE=20G ./build.sh
+sudo IMAGE_PROFILE=generic-qemu BLACKARCH_PROFILE=common DISK_SIZE=20G ./build.sh
 ```
 
-### Add specific BlackArch packages
+Additional BlackArch packages:
 
 ```bash
-sudo BLACKARCH_PACKAGES="sqlmap nmap masscan" DISK_SIZE=20G ./build.sh
+sudo IMAGE_PROFILE=digitalocean BLACKARCH_PACKAGES="blackarch-officials" DISK_SIZE=20G ./build.sh
 ```
 
-### Use the repository only, with no extra tools preinstalled
+You can also run the convenience target:
 
 ```bash
-sudo BLACKARCH_PROFILE=core ./build.sh
+make build
 ```
 
-## Build settings
+`make build` is best for the default configuration. For non-default environment variables, prefer invoking `sudo ./build.sh` directly so the settings are preserved across privilege escalation.
 
-### Version selection
+## Configuration
 
-- `BUILD_VERSION` — optional explicit artifact version. `make BUILD_VERSION=20260320.0` passes it through automatically, and direct `build.sh` runs also accept `sudo BUILD_VERSION=20260320.0 ./build.sh` or `sudo ./build.sh 20260320.0`.
-- When no explicit version is provided, the build auto-selects the first free date-based version for the current day, for example `20260320.0`, `20260320.1`, and so on.
+Core staged-build settings:
 
-### General build settings
+- `IMAGE_PROFILE`
+  `generic-qemu` or `digitalocean`. Default: `generic-qemu`.
+- `BUILD_VERSION`
+  Optional explicit artifact version. If unset, the build auto-selects the next `YYYYMMDD.N` value.
+- `DISK_SIZE`
+  Final raw disk size used for Stage 2 assembly.
+- `DEFAULT_DISK_SIZE`
+  Compatibility default used when `DISK_SIZE` is unset. Default: `2G`.
 
-- `DEFAULT_DISK_SIZE` — initial sparse raw disk size used during bootstrap. Default: `2G`.
-- `DISK_SIZE` — optional final root disk size before conversion to `qcow2`.
+BlackArch settings:
 
-### BlackArch settings
+- `BLACKARCH_PROFILE`
+  `core` or `common`. Default: `core`.
+- `BLACKARCH_PACKAGES`
+  Space-separated extra packages installed after the BlackArch repository is enabled.
+- `BLACKARCH_KEYRING_VERSION`
+  Keyring bundle version used by the built-in BlackArch bootstrap. Default: `20251011`.
+- `BLACKARCH_KEYRING_SHA256`
+  Optional explicit SHA256 for the selected keyring archive. Required when using an unpinned custom keyring version.
+- `BLACKARCH_STRAP_URL`
+  Optional compatibility override for using an external BlackArch strap script.
+- `BLACKARCH_STRAP_SHA256`
+  Required checksum for `BLACKARCH_STRAP_URL`.
 
-- `BLACKARCH_PROFILE` — `core` or `common`. Default: `core`.
-- `BLACKARCH_PACKAGES` — space-separated package list to install after the BlackArch repository is configured.
-- `BLACKARCH_KEYRING_VERSION` — keyring bundle version used by the in-repo BlackArch bootstrap. Default: `20251011`.
-- `BLACKARCH_KEYRING_SHA256` — optional explicit SHA256 for the selected keyring archive; required when using an unpinned custom keyring version.
-- `BLACKARCH_STRAP_URL` — optional compatibility override for using an external BlackArch strap script instead of the built-in bootstrap.
-- `BLACKARCH_STRAP_SHA256` — required SHA256 checksum for `BLACKARCH_STRAP_URL`.
+Image customization settings:
 
-### Image customization settings
-
-- `IMAGE_HOSTNAME`, `IMAGE_SWAP_SIZE`, `IMAGE_LOCALE`, `IMAGE_TIMEZONE`, and `IMAGE_KEYMAP` — override first-boot image defaults while preserving the current default behavior when unset.
-- `IMAGE_DEFAULT_USER`, `IMAGE_DEFAULT_USER_GECOS`, and `IMAGE_PASSWORDLESS_SUDO` — override the default cloud user identity and sudo policy. `IMAGE_PASSWORDLESS_SUDO` accepts `true` or `false`.
-- `IMAGE_ENABLE_QEMU_GUEST_AGENT` — when set to `true`, install and enable `qemu-guest-agent`. Default: `false`.
+- `IMAGE_ENABLE_QEMU_GUEST_AGENT`
+  Optional override. When unset, the selected profile decides the default.
+  `generic-qemu` resolves to `true`; `digitalocean` resolves to `false`.
+- `IMAGE_HOSTNAME`
+- `IMAGE_SWAP_SIZE`
+- `IMAGE_LOCALE`
+- `IMAGE_TIMEZONE`
+- `IMAGE_KEYMAP`
+- `IMAGE_DEFAULT_USER`
+- `IMAGE_DEFAULT_USER_GECOS`
+- `IMAGE_PASSWORDLESS_SUDO`
 
 ## Output artifacts
 
-Successful builds produce these files in `output/`:
+Successful builds write staged artifacts under `output/`:
 
-- `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2`
-- `BlackArch-Linux-x86_64-cloudimg-<version>.qcow2.SHA256`
-- `BlackArch-Linux-x86_64-cloudimg-<version>.manifest`
-- `BlackArch-Linux-x86_64-cloudimg-<version>.build.log`
+- `output/rootfs/blackarch-rootfs-<version>.tar.zst`
+- `output/rootfs/blackarch-rootfs-<version>.manifest`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2.SHA256`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.manifest`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz.SHA256`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.manifest`
+- `output/images/BlackArch-Linux-x86_64-<profile>-<version>.build.log`
 
-Verify the checksum after the build:
+The manifest files are simple `key=value` records with the resolved build metadata for the rootfs and final image artifacts.
+
+Verify the final checksum after a build:
 
 ```bash
-cd output
-sha256sum -c BlackArch-Linux-x86_64-cloudimg-<version>.qcow2.SHA256
+cd output/images
+sha256sum -c BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2.SHA256
 ```
 
-## First boot behavior
+or:
 
-The image is prepared for `cloud-init`-driven environments.
+```bash
+cd output/images
+sha256sum -c BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz.SHA256
+```
 
-Current defaults baked into the image:
+## First boot defaults
+
+The images are prepared for `cloud-init` environments with these defaults:
 
 - root login is disabled
 - SSH password authentication is disabled
 - the default cloud user is `arch`
-- the default cloud user gets passwordless `sudo`
-- console output is available on `tty0` and `ttyS0` at `115200`
+- the default cloud user gets passwordless `sudo` unless overridden
 
-That means you should normally provide an SSH key with `cloud-init` rather than relying on a password.
-
-Example `user-data`:
-
-```yaml
-#cloud-config
-users:
-  - default
-ssh_authorized_keys:
-  - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... replace-me
-package_update: false
-package_upgrade: false
-```
-
-Example `meta-data`:
-
-```yaml
-instance-id: blackarch-test-01
-local-hostname: blackarch-test-01
-```
-
-## Local smoke test with QEMU
-
-One practical way to validate the image locally is to boot it with a NoCloud seed image.
-
-Create `user-data` and `meta-data` as shown above, then create a seed image with your preferred tool, for example `cloud-localds`:
-
-```bash
-cloud-localds seed.img user-data meta-data
-```
-
-Boot the image:
-
-```bash
-qemu-system-x86_64 \
-  -m 4096 \
-  -smp 2 \
-  -nographic \
-  -serial mon:stdio \
-  -drive if=virtio,format=qcow2,file=output/BlackArch-Linux-x86_64-cloudimg-<version>.qcow2 \
-  -drive if=virtio,format=raw,file=seed.img \
-  -device virtio-net-pci \
-  -enable-kvm
-```
-
-Things to verify on first boot:
-
-- GRUB appears and the kernel boots without manual intervention
-- `cloud-init` finishes successfully
-- the `arch` user is created or configured as expected
-- your SSH key works
-- `qemu-guest-agent` is active when `IMAGE_ENABLE_QEMU_GUEST_AGENT=true`
-- networking comes up correctly
+Manual boot/runtime validation is still your responsibility. This repository does not yet provide a `validate-image.sh`, QEMU smoke-boot stage, or provider-specific runtime checks.
 
 ## Make targets
 
@@ -259,62 +231,11 @@ make help
 
 Available targets:
 
-- `make` or `make build` — run preflight checks and build the image
-- `make check-env` — validate host tools, network reachability, privileges, loop devices, and free space
-- `make lint` — run `bash -n` and `shellcheck`
-- `make clean` — remove `output/` and `tmp/`
-
-## Troubleshooting
-
-### `make check-env` fails on missing commands
-
-Install the missing host tools and run the check again.
-
-### Not enough free disk space
-
-Free space on the filesystem that contains this repository, or move the repository to a larger filesystem.
-
-### Build was interrupted
-
-The build script installs traps for `ERR`, `INT`, `TERM`, and `EXIT`, and attempts to clean up loop devices, mounts, and temporary directories automatically.
-
-### BlackArch repository setup fails
-
-Check:
-
-- network connectivity to `blackarch.org`
-- the selected `BLACKARCH_KEYRING_VERSION`
-- whether you intentionally overrode `BLACKARCH_STRAP_URL`
-- the build log in `output/*.build.log`
-
-### Cloud image boots but SSH access does not work
-
-Make sure you supplied an SSH public key through `cloud-init`. The image disables password-based SSH authentication by default.
-
-## Security notes
-
-A few defaults are convenient for automation but should be understood before production use:
-
-- the default cloud user is configured with passwordless `sudo`
-- the build downloads BlackArch repository bootstrap inputs during image creation
-- the optional legacy strap path executes an external script if `BLACKARCH_STRAP_URL` is set
-
-For stricter environments, consider forking the project and tightening the cloud-init defaults or bootstrap verification path.
-
-## Development notes
-
-Before sending changes:
-
-```bash
-make lint
-```
-
-Recommended follow-up automation for the repository:
-
-- a CI job that runs `bash -n` and `shellcheck`
-- an optional smoke test that boots the built image in QEMU and checks `cloud-init` completion
-- release automation that publishes the `qcow2`, checksum, and build metadata
-
-## License
-
-See [LICENSE](LICENSE).
+- `build`
+  Run preflight checks and then invoke `./build.sh`.
+- `check-env`
+  Validate the host build environment.
+- `lint`
+  Run `bash -n` and `shellcheck`.
+- `clean`
+  Remove build leftovers under `tmp/` and delete staged output artifacts.
