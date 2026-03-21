@@ -37,6 +37,7 @@ trap cleanup EXIT
 function bootstrap_rootfs() {
   local pacman_dbpath="${ROOTFS_STAGE_DIR}/pacman-db"
   local pacman_cachedir="${ROOTFS_STAGE_DIR}/pacman-cache"
+  local pacman_hookdir="${ROOTFS_STAGE_DIR}/pacman-hooks"
   local -a bootstrap_packages=(
     base
     linux
@@ -57,7 +58,8 @@ function bootstrap_rootfs() {
     gptfdisk
   )
 
-  run_logged mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
+  run_logged mkdir -p "${pacman_dbpath}" "${pacman_cachedir}" "${pacman_hookdir}"
+  run_logged ln -sf /dev/null "${pacman_hookdir}/90-mkinitcpio-install.hook"
 
   cat <<EOF >"${ROOTFS_STAGE_DIR}/pacman.conf"
 [options]
@@ -66,6 +68,7 @@ SigLevel = DatabaseOptional
 DBPath = ${pacman_dbpath}
 CacheDir = ${pacman_cachedir}
 GPGDir = ${PACSTRAP_GPGDIR}
+HookDir = ${pacman_hookdir}
 
 [core]
 Include = ${ROOTFS_STAGE_DIR}/mirrorlist
@@ -79,6 +82,76 @@ EOF
   run_logged pacstrap -C "${ROOTFS_STAGE_DIR}/pacman.conf" -M "${TARGET_ROOT}" "${bootstrap_packages[@]}"
   run_logged gpgconf --homedir "${TARGET_ROOT}/etc/pacman.d/gnupg" --kill all || true
   run_logged install -Dm0644 "${ROOTFS_STAGE_DIR}/mirrorlist" "${TARGET_ROOT}/etc/pacman.d/mirrorlist"
+}
+
+function prepare_staged_kernel_artifacts() {
+  local modules_dir=''
+  local pkgbase=''
+  local kernelbase=''
+  local kernel_image=''
+  local kernel_copy_path=''
+  local preset_path=''
+  local preset_template=''
+  local preset_tmp_path=''
+  local prepared_count=0
+
+  preset_template="${TARGET_ROOT}/usr/share/mkinitcpio/hook.preset"
+
+  shopt -s nullglob
+  for modules_dir in "${TARGET_ROOT}"/usr/lib/modules/*; do
+    if [ ! -d "${modules_dir}" ] || [ ! -r "${modules_dir}/pkgbase" ]; then
+      continue
+    fi
+
+    read -r pkgbase < "${modules_dir}/pkgbase"
+
+    if [ -z "${pkgbase}" ]; then
+      continue
+    fi
+
+    if [ -r "${modules_dir}/kernelbase" ]; then
+      read -r kernelbase < "${modules_dir}/kernelbase"
+    else
+      kernelbase="${pkgbase}"
+    fi
+
+    kernel_image="${modules_dir}/vmlinuz"
+    kernel_copy_path="${TARGET_ROOT}/boot/vmlinuz-${pkgbase}"
+    preset_path="${TARGET_ROOT}/etc/mkinitcpio.d/${pkgbase}.preset"
+    preset_tmp_path="${ROOTFS_STAGE_DIR}/${pkgbase}.preset.tmp"
+
+    if [ -r "${kernel_image}" ]; then
+      run_logged install -Dm0644 "${kernel_image}" "${kernel_copy_path}"
+    fi
+
+    if [ -r "${preset_template}" ]; then
+      log_command sed \
+        -e "s|%PKGBASE%|${pkgbase}|g" \
+        -e "s|%KERNELBASE%|${kernelbase}|g" \
+        "${preset_template}"
+      sed \
+        -e "s|%PKGBASE%|${pkgbase}|g" \
+        -e "s|%KERNELBASE%|${kernelbase}|g" \
+        "${preset_template}" > "${preset_tmp_path}"
+
+      if grep -Eq '%[A-Z_][A-Z0-9_]*%' "${preset_tmp_path}"; then
+        printf 'Generated preset still contains unresolved template token(s): %s\n' "${preset_tmp_path}" >&2
+        sed -n '1,80p' "${preset_tmp_path}" >&2
+        return 1
+      fi
+
+      run_logged install -Dm0644 "${preset_tmp_path}" "${preset_path}"
+      run_logged rm -f "${preset_tmp_path}"
+    fi
+
+    prepared_count=$((prepared_count + 1))
+  done
+  shopt -u nullglob
+
+  if [ "${prepared_count}" -eq 0 ]; then
+    printf 'No installed kernel artifacts were discovered under %s/usr/lib/modules\n' "${TARGET_ROOT}" >&2
+    return 1
+  fi
 }
 
 function prepare_stage_pacman_config() {
@@ -125,6 +198,9 @@ function main() {
 
   log_step "Stage 1: bootstrapping common Arch rootfs"
   bootstrap_rootfs
+
+  log_step "Stage 1: preparing kernel preset and boot artifacts"
+  prepare_staged_kernel_artifacts
 
   log_step "Stage 1: applying common base customization"
   configure_base_rootfs
