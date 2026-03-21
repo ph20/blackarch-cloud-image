@@ -23,3 +23,18 @@ function ensure_directories() {
 function current_timestamp_utc() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
+
+function prepare_stage_workdir() {
+  local stage_name="${1}"
+  local stage_path=''
+
+  if [ -z "${BUILD_WORKDIR:-}" ]; then
+    BUILD_WORKDIR="${TMP_ROOT}/build-${BUILD_VERSION}-${IMAGE_PROFILE}"
+    export BUILD_WORKDIR
+  fi
+
+  stage_path="${BUILD_WORKDIR}/${stage_name}"
+  rm -rf "${stage_path}"
+  mkdir -p "${stage_path}"
+  printf '%s\n' "${stage_path}"
+}
