@@ -11,11 +11,20 @@ The build flow is intentionally shell-only:
 Supported platform profiles:
 
 - `generic-qemu`
-  Exports `qcow2`, uses a Btrfs root filesystem, enables `qemu-guest-agent`, and defaults to `2G`.
+  Exports `qcow2`, uses a Btrfs root filesystem, installs and enables `qemu-guest-agent`, defaults to `2G`, and keeps the current BIOS+UEFI boot path.
 - `digitalocean`
-  Exports `img.gz`, uses an ext4 root filesystem, disables `qemu-guest-agent`, and defaults to `4G`.
+  Exports `img.gz`, uses an ext4 root filesystem, keeps a BIOS-only boot path, skips `qemu-guest-agent`, adds a DigitalOcean-specific `cloud-init` datasource override, cleans `cloud-init` state before packaging, and defaults to `4G`.
 
-The profile layer is intentionally small today. Future platforms should be added by introducing new profile files and localized profile logic, not by cloning the whole pipeline.
+Profile customization is localized through:
+
+- `profiles/<name>.env`
+  Profile defaults and the supported `PROFILE_*` settings.
+- `profiles/<name>.sh`
+  Optional shell hook for advanced profile-specific logic.
+- `profiles/<name>/rootfs-overlay/`
+  Optional files copied into the mounted image root during Stage 2.
+
+Future platforms should be added by introducing new profile files and localized profile logic, not by cloning the whole pipeline.
 
 Runtime boot validation is not implemented yet. This repository only builds the staged artifacts.
 
@@ -32,12 +41,18 @@ The common rootfs stage includes:
 
 The assembled image includes:
 
-- GRUB configured for BIOS and UEFI boot
+- GRUB configured per profile boot mode
+- kernel root arguments normalized to stable filesystem UUIDs instead of loop-device paths
 - serial console on `tty0` and `ttyS0`
 - `systemd-networkd`, `systemd-resolved`, `systemd-timesyncd`, and `sshd`
 - profile-specific root filesystem behavior:
   `generic-qemu` uses Btrfs with Zstandard compression
   `digitalocean` uses ext4
+- Stage 1 suppresses the early `mkinitcpio` package hook for the reusable rootfs tree
+- Stage 1 recreates the kernel preset and `/boot/vmlinuz-*` copy needed for Stage 2 finalization without generating initramfs yet
+- Stage 1 now renders the preset from the upstream `mkinitcpio` template, resolves all known placeholders, and fails early if any `%...%` token remains
+- Stage 2 rebuilds the final initramfs after the real image root filesystem is mounted, skipping the `autodetect` hook so cloud drivers are not stripped based on the build host
+- Stage 2 generates the final `grub.cfg` only after the initramfs exists, then validates that the boot config contains both `linux` and `initrd` entries without host loop-device paths
 
 ## Project layout
 
@@ -45,8 +60,11 @@ The assembled image includes:
 .
 ├── build.sh                         # Thin user-facing orchestrator
 ├── profiles/
-│   ├── digitalocean.env             # img.gz export, qemu guest agent disabled
-│   └── generic-qemu.env             # qcow2 export, qemu guest agent enabled
+│   ├── digitalocean.env             # DigitalOcean profile defaults
+│   ├── digitalocean.sh              # Optional DigitalOcean profile hook
+│   ├── digitalocean/
+│   │   └── rootfs-overlay/          # DigitalOcean rootfs overlay files
+│   └── generic-qemu.env             # Generic QEMU/KVM profile defaults
 ├── images/
 │   ├── base.sh                      # Common rootfs and bootable disk customization hooks
 │   └── blackarch-cloud.sh           # BlackArch repo/profile + cloud-init customization
@@ -73,16 +91,12 @@ Required commands:
 
 - `arch-chroot`
 - `blockdev`
-- `btrfs`
-- `chattr`
 - `curl`
 - `fstrim`
 - `gpgconf`
 - `gzip`
 - `losetup`
-- `mkfs.btrfs`
 - `mkfs.ext4`
-- `mkfs.fat`
 - `mount`
 - `mountpoint`
 - `pacman`
@@ -96,6 +110,13 @@ Required commands:
 - `umount`
 - `zstd`
 - `sudo` when the build is started as a non-root user
+
+Additional commands are required by profile behavior:
+
+- `btrfs`, `chattr`, and `mkfs.btrfs`
+  Required for Btrfs-root profiles such as `generic-qemu`.
+- `mkfs.fat`
+  Required for profiles that keep an EFI system partition, such as `generic-qemu`.
 
 Run the preflight checks before building:
 
@@ -198,6 +219,73 @@ Image customization settings:
 - `IMAGE_DEFAULT_USER_GECOS`
 - `IMAGE_PASSWORDLESS_SUDO`
 
+## Profile Customization Model
+
+Each profile is resolved from `profiles/<name>.env` and can optionally add:
+
+- `profiles/<name>.sh`
+  A hook script that defines `profile_hook()`. The current pipeline calls it during Stage 2 finalization.
+- `profiles/<name>/rootfs-overlay/`
+  A filesystem tree copied into the mounted image root before bootloader installation.
+
+Supported profile variables:
+
+- `PROFILE_ID`
+- `PROFILE_NAME_SUFFIX`
+- `PROFILE_FINAL_FORMAT`
+- `PROFILE_ROOT_FS_TYPE`
+- `PROFILE_DEFAULT_DISK_SIZE`
+- `PROFILE_BOOT_MODE`
+  Supported values: `bios`, `bios+uefi`
+- `PROFILE_EFI_PARTITION_SIZE`
+  Used when `PROFILE_BOOT_MODE=bios+uefi`
+- `PROFILE_PACMAN_PACKAGES`
+  Space-separated packages installed in Stage 2
+- `PROFILE_ENABLE_SYSTEMD_UNITS`
+  Space-separated units enabled in Stage 2
+- `PROFILE_DISABLE_SYSTEMD_UNITS`
+  Space-separated units disabled in Stage 2
+- `PROFILE_ROOTFS_OVERLAY_DIR`
+  Optional overlay path, resolved relative to `profiles/` when not absolute
+- `PROFILE_HOOK_SCRIPT`
+  Optional hook path, resolved relative to `profiles/` when not absolute
+
+Minimal example for a new profile:
+
+```bash
+# profiles/example.env
+#!/usr/bin/env bash
+# shellcheck disable=SC2034
+PROFILE_ID="example"
+PROFILE_NAME_SUFFIX="example"
+PROFILE_FINAL_FORMAT="qcow2"
+PROFILE_ROOT_FS_TYPE="ext4"
+PROFILE_DEFAULT_DISK_SIZE="4G"
+PROFILE_BOOT_MODE="bios"
+PROFILE_EFI_PARTITION_SIZE=""
+PROFILE_PACMAN_PACKAGES="qemu-guest-agent"
+PROFILE_ENABLE_SYSTEMD_UNITS="qemu-guest-agent.service"
+PROFILE_DISABLE_SYSTEMD_UNITS=""
+PROFILE_ROOTFS_OVERLAY_DIR="example/rootfs-overlay"
+PROFILE_HOOK_SCRIPT="example.sh"
+```
+
+If `profiles/example/rootfs-overlay/` exists, its files are copied into the target rootfs during Stage 2. If `profiles/example.sh` exists, it can define:
+
+```bash
+#!/usr/bin/env bash
+
+function profile_hook() {
+  local hook_name="${1}"
+
+  case "${hook_name}" in
+    finalize)
+      :
+      ;;
+  esac
+}
+```
+
 ## Output artifacts
 
 Successful builds write staged artifacts under `output/`:
@@ -231,7 +319,9 @@ sha256sum -c BlackArch-Linux-x86_64-digitalocean-<version>.img.gz.SHA256
 DigitalOcean note:
 
 - the profile now exports a gzip-compressed raw image with an `.img.gz` name
-- the profile now assembles an ext4-root image instead of Btrfs
+- the profile now assembles an ext4-root BIOS-only image instead of reusing the generic BIOS+UEFI layout
+- the profile adds a `cloud-init` datasource override from `profiles/digitalocean/rootfs-overlay/`
+- the profile cleans `cloud-init` state from its Stage 2 hook before export
 - runtime platform validation is still not implemented, so DigitalOcean-specific boot/import verification is still manual
 
 ## First boot defaults
