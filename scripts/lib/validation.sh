@@ -70,6 +70,20 @@ function validate_build_version_value() {
   validate_build_id_value "${1:-}"
 }
 
+function validate_reuse_rootfs_value() {
+  local reuse_rootfs="${1:-false}"
+
+  case "${reuse_rootfs}" in
+    '' | true | false)
+      return 0
+      ;;
+    *)
+      validation_fail "REUSE_ROOTFS must be 'true' or 'false' (got: ${reuse_rootfs})"
+      return 1
+      ;;
+  esac
+}
+
 function validate_size_value() {
   local env_name="${1}"
   local size_value="${2:-}"
@@ -265,6 +279,7 @@ function validate_build_configuration() {
 
   validate_release_version_value "${requested_release_version}" || return 1
   validate_build_id_value "${requested_build_id}" || return 1
+  validate_reuse_rootfs_value "${REUSE_ROOTFS:-false}" || return 1
   validate_image_profile_value "${IMAGE_PROFILE:-generic-qemu}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1

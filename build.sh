@@ -14,6 +14,8 @@ source "${PROJECT_ROOT}/scripts/lib/common.sh"
 source "${PROJECT_ROOT}/scripts/lib/config.sh"
 # shellcheck source=scripts/lib/logging.sh
 source "${PROJECT_ROOT}/scripts/lib/logging.sh"
+# shellcheck source=scripts/lib/manifest.sh
+source "${PROJECT_ROOT}/scripts/lib/manifest.sh"
 
 function setup_logging() {
   ensure_directories "${ROOTFS_OUTPUT_DIR}" "${IMAGE_OUTPUT_DIR}" "${TMP_ROOT}"
@@ -35,6 +37,7 @@ function setup_logging() {
   status_line "Git commit: ${GIT_COMMIT}"
   status_line "Git tag: ${GIT_TAG}"
   status_line "Profile: ${RESOLVED_IMAGE_PROFILE}"
+  status_line "Reuse rootfs artifact: ${REUSE_ROOTFS:-false}"
 
   if [ "${BUILD_ID_SOURCE}" = "legacy-build-version-env" ]; then
     status_line "Using legacy BUILD_VERSION as BUILD_ID."
@@ -44,6 +47,37 @@ function setup_logging() {
     status_line "No explicit build ID was provided."
     status_line "Auto-selected build ID ${BUILD_ID}"
   fi
+}
+
+function reuse_rootfs_requested() {
+  [ "${REUSE_ROOTFS:-false}" = "true" ]
+}
+
+function can_reuse_rootfs_artifact() {
+  if ! reuse_rootfs_requested; then
+    return 1
+  fi
+
+  if [ ! -f "${ROOTFS_ARTIFACT_PATH}" ]; then
+    status_line "Rootfs reuse was requested, but no existing artifact was found at ${ROOTFS_ARTIFACT_PATH}."
+    return 1
+  fi
+
+  if [ ! -f "${ROOTFS_MANIFEST_PATH}" ]; then
+    status_line "Rootfs reuse was requested, but the artifact manifest is missing: ${ROOTFS_MANIFEST_PATH}"
+    return 1
+  fi
+
+  if ! validate_reusable_rootfs_manifest "${ROOTFS_MANIFEST_PATH}"; then
+    status_line "Rootfs reuse was requested, but the existing artifact is incompatible with the current Stage 1 configuration."
+    return 1
+  fi
+
+  ROOTFS_REUSED=1
+  export ROOTFS_REUSED
+  status_line "Reusing existing rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"
+  status_line "Reusing existing rootfs manifest: ${ROOTFS_MANIFEST_PATH}"
+  return 0
 }
 
 function cleanup() {
@@ -88,20 +122,27 @@ trap 'handle_signal SIGTERM 143' TERM
 function main() {
   require_root
   resolve_build_context "${1:-}"
+  ROOTFS_REUSED=0
+  export ROOTFS_REUSED
   setup_logging
 
   log_step "Initializing staged build workspace"
   run_logged rm -rf "${BUILD_WORKDIR}"
   run_logged mkdir -p "${BUILD_WORKDIR}"
 
-  log_step "Running Stage 1: build common rootfs"
-  run_logged bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_ID}"
+  if can_reuse_rootfs_artifact; then
+    log_step "Skipping Stage 1: reusing common rootfs"
+  else
+    log_step "Running Stage 1: build common rootfs"
+    run_logged bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_ID}"
+  fi
   log_step "Running Stage 2: assemble profile-specific image"
   run_logged bash "${PROJECT_ROOT}/scripts/assemble-image.sh" "${BUILD_ID}"
   log_step "Running Stage 3: export final artifact"
   run_logged bash "${PROJECT_ROOT}/scripts/export-image.sh" "${BUILD_ID}"
 
   log_step "Build completed"
+  status_line "Rootfs reused: ${ROOTFS_REUSED}"
   status_line "Rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"
   status_line "Rootfs manifest: ${ROOTFS_MANIFEST_PATH}"
   status_line "Image artifact: ${FINAL_IMAGE_PATH}"

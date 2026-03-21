@@ -186,6 +186,30 @@ IMAGE_PROFILE=generic-qemu BLACKARCH_PROFILE=common DISK_SIZE=20G make build
 IMAGE_PROFILE=digitalocean BUILD_ID=20260321.2 make build
 ```
 
+Reuse an existing compatible rootfs artifact for another profile build:
+
+```bash
+sudo IMAGE_PROFILE=digitalocean BUILD_ID=20260321.2 REUSE_ROOTFS=true ./build.sh
+```
+
+Build all supported profiles sequentially with one `BUILD_ID` and one shared Stage 1 rootfs artifact:
+
+```bash
+BUILD_ID=20260321.2 make build-all
+```
+
+If a compatible rootfs tarball already exists for that `BUILD_ID`, reuse it from the first profile onward:
+
+```bash
+BUILD_ID=20260321.2 REUSE_ROOTFS=true make build-all
+```
+
+Override the profile list used by `make build-all`:
+
+```bash
+IMAGE_PROFILES="generic-qemu digitalocean" BUILD_ID=20260321.2 make build-all
+```
+
 ## Versioning
 
 The builder resolves three separate version values:
@@ -210,6 +234,8 @@ Artifact filenames include both pieces of information:
 
 - `BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.<ext>`
 - `blackarch-rootfs-v<release_version>+<build_id>.tar.zst`
+
+The Stage 1 rootfs tarball is profile-neutral. When `REUSE_ROOTFS=true`, the builder will reuse an existing compatible rootfs artifact instead of rebuilding Stage 1. Compatibility is checked against the rootfs manifest, including the current git commit and the Stage 1 inputs that affect the reusable rootfs contents.
 
 The manifests remain `key=value` files and record explicit version/build metadata, including:
 
@@ -254,6 +280,10 @@ Core staged-build settings:
   Optional explicit `YYYYMMDD.N` build identity. If unset, the builder auto-selects the next daily build number.
 - `BUILD_VERSION`
   Legacy compatibility alias for `BUILD_ID`. It is only honored when it already matches `YYYYMMDD.N`. Prefer `BUILD_ID` for new automation.
+- `REUSE_ROOTFS`
+  `true` or `false`. Default: `false`. When `true`, `build.sh` reuses an existing compatible rootfs tarball for the selected `release_version` and `build_id` instead of rebuilding Stage 1.
+- `IMAGE_PROFILES`
+  Space-separated profile list used by `make build-all`. Default: `generic-qemu digitalocean`.
 - `DISK_SIZE`
   Final raw disk size used for Stage 2 assembly.
 - `DEFAULT_DISK_SIZE`
@@ -372,7 +402,34 @@ Successful builds write staged artifacts under `output/`:
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.manifest`
 - `output/images/BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.build.log`
 
-The manifest files are simple `key=value` records. Final image manifests include:
+The manifest files are simple `key=value` records.
+
+The reusable rootfs manifest is intentionally profile-neutral. It includes the shared Stage 1 identity and configuration, including:
+
+- `artifact_type`
+- `rootfs_name`
+- `artifact_name`
+- `artifact_format`
+- `release_version`
+- `build_id`
+- `artifact_version`
+- `git_commit`
+- `git_tag`
+- `blackarch_profile`
+- `blackarch_packages`
+- `image_hostname`
+- `image_default_user`
+- `image_default_user_gecos`
+- `image_locale`
+- `image_timezone`
+- `image_keymap`
+- `image_passwordless_sudo`
+- `blackarch_keyring_version`
+- `blackarch_bootstrap_mode`
+- `rootfs_input_fingerprint`
+- `built_at_utc`
+
+Final image manifests include:
 
 - `artifact_type`
 - `image_name`
