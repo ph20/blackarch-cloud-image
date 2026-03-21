@@ -13,6 +13,8 @@ source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=scripts/lib/logging.sh
 source "${SCRIPT_DIR}/lib/logging.sh"
+# shellcheck source=scripts/lib/manifest.sh
+source "${SCRIPT_DIR}/lib/manifest.sh"
 
 function export_qcow2() {
   qemu-img convert -c -f raw -O qcow2 "${STAGING_IMAGE_PATH}" "${FINAL_IMAGE_PATH}"
@@ -39,7 +41,7 @@ function main() {
     exit 1
   fi
 
-  rm -f "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}"
+  rm -f "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}" "${FINAL_IMAGE_MANIFEST_PATH}"
 
   log_step "Stage 3: exporting ${RESOLVED_IMAGE_PROFILE} artifact"
   case "${RESOLVED_IMAGE_FINAL_FORMAT}" in
@@ -57,7 +59,10 @@ function main() {
 
   log_step "Stage 3: writing final artifact checksum"
   write_checksum
-  chown_to_invoking_user "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}" 2>/dev/null || true
+
+  log_step "Stage 3: writing final image manifest"
+  write_final_image_manifest
+  chown_to_invoking_user "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}" "${FINAL_IMAGE_MANIFEST_PATH}" 2>/dev/null || true
 }
 
 main "${1:-}"

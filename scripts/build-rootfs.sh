@@ -16,6 +16,8 @@ source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=scripts/lib/logging.sh
 source "${SCRIPT_DIR}/lib/logging.sh"
+# shellcheck source=scripts/lib/manifest.sh
+source "${SCRIPT_DIR}/lib/manifest.sh"
 
 function cleanup() {
   if [ -n "${ROOTFS_STAGE_DIR:-}" ] && [ -d "${ROOTFS_STAGE_DIR:-}" ]; then
@@ -71,7 +73,7 @@ EOF
 }
 
 function pack_rootfs_artifact() {
-  rm -f "${ROOTFS_ARTIFACT_PATH}"
+  rm -f "${ROOTFS_ARTIFACT_PATH}" "${ROOTFS_MANIFEST_PATH}"
   tar --zstd --acls --xattrs --numeric-owner -C "${TARGET_ROOT}" -cpf "${ROOTFS_ARTIFACT_PATH}" .
   chown_to_invoking_user "${ROOTFS_ARTIFACT_PATH}" 2>/dev/null || true
 }
@@ -103,6 +105,10 @@ function main() {
 
   log_step "Stage 1: packing reusable rootfs artifact"
   pack_rootfs_artifact
+
+  log_step "Stage 1: writing rootfs manifest"
+  write_rootfs_manifest
+  chown_to_invoking_user "${ROOTFS_MANIFEST_PATH}" 2>/dev/null || true
 }
 
 main "${1:-}"

@@ -90,8 +90,10 @@ function main() {
 
   log_step "Build completed"
   status_line "Rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"
+  status_line "Rootfs manifest: ${ROOTFS_MANIFEST_PATH}"
   status_line "Image artifact: ${FINAL_IMAGE_PATH}"
   status_line "Checksum: ${FINAL_IMAGE_CHECKSUM_PATH}"
+  status_line "Image manifest: ${FINAL_IMAGE_MANIFEST_PATH}"
   status_line "Build log: ${BUILD_LOG}"
 }
 

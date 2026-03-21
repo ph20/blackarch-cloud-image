@@ -8,8 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
-IMAGE_NAME_PREFIX="BlackArch-Linux-x86_64-cloudimg"
-readonly IMAGE_NAME_PREFIX
 OUTPUT_ROOT="${PROJECT_ROOT}/output"
 readonly OUTPUT_ROOT
 TMP_ROOT="${PROJECT_ROOT}/tmp"
@@ -99,20 +97,12 @@ function detach_tmp_loop_devices() {
 }
 
 function remove_output_artifacts() {
-  local artifact_path=''
-
   if [ ! -d "${OUTPUT_ROOT}" ]; then
     return 0
   fi
 
-  while IFS= read -r artifact_path; do
-    if [ -z "${artifact_path}" ]; then
-      continue
-    fi
-
-    rm -f "${artifact_path}"
-  done < <(find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name "${IMAGE_NAME_PREFIX}-*" -print)
-
+  rm -rf "${OUTPUT_ROOT}/rootfs" "${OUTPUT_ROOT}/images"
+  find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name 'BlackArch-Linux-x86_64-cloudimg-*' -delete
   rmdir "${OUTPUT_ROOT}" 2>/dev/null || true
 }
 
