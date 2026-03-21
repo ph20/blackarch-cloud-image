@@ -64,6 +64,8 @@ function main() {
 
   log_step "Stage 2: applying ${RESOLVED_IMAGE_PROFILE} pre-boot customization"
   apply_profile_rootfs_overlay
+  reset_profile_rootfs_ownership
+  validate_profile_rootfs_ownership
   install_profile_pacman_packages
 
   log_step "Stage 2: applying bootable disk customization"
@@ -73,6 +75,7 @@ function main() {
   enable_profile_systemd_units
   disable_profile_systemd_units
   run_profile_hook finalize
+  validate_profile_rootfs_ownership
 
   log_step "Stage 2: finalizing raw staging image"
   finalize_base_image

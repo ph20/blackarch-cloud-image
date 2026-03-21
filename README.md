@@ -22,7 +22,7 @@ Profile customization is localized through:
 - `profiles/<name>.sh`
   Optional shell hook for advanced profile-specific logic.
 - `profiles/<name>/rootfs-overlay/`
-  Optional files copied into the mounted image root during Stage 2.
+  Optional files copied into the mounted image root during Stage 2 without preserving host uid/gid from the build checkout.
 
 Future platforms should be added by introducing new profile files and localized profile logic, not by cloning the whole pipeline.
 
@@ -53,6 +53,7 @@ The assembled image includes:
 - Stage 1 now renders the preset from the upstream `mkinitcpio` template, resolves all known placeholders, and fails early if any `%...%` token remains
 - Stage 2 rebuilds the final initramfs after the real image root filesystem is mounted, skipping the `autodetect` hook so cloud drivers are not stripped based on the build host
 - Stage 2 generates the final `grub.cfg` only after the initramfs exists, then validates that the boot config contains both `linux` and `initrd` entries without host loop-device paths
+- Stage 2 validates that `/`, `/etc`, `/etc/cloud`, and `/etc/cloud/cloud.cfg.d` remain root-owned after profile overlays and hooks run
 
 ## Project layout
 
@@ -321,6 +322,7 @@ DigitalOcean note:
 - the profile now exports a gzip-compressed raw image with an `.img.gz` name
 - the profile now assembles an ext4-root BIOS-only image instead of reusing the generic BIOS+UEFI layout
 - the profile adds a `cloud-init` datasource override from `profiles/digitalocean/rootfs-overlay/`
+- the profile preserves the base image hostname instead of accepting a potentially overlong droplet hostname from metadata
 - the profile cleans `cloud-init` state from its Stage 2 hook before export
 - runtime platform validation is still not implemented, so DigitalOcean-specific boot/import verification is still manual
 

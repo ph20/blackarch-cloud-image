@@ -5,7 +5,39 @@ function apply_profile_rootfs_overlay() {
     return 0
   fi
 
-  run_logged cp -a "${RESOLVED_PROFILE_ROOTFS_OVERLAY_DIR}/." "${TARGET_ROOT}/"
+  # Preserve file metadata from the overlay, but never leak the build host's
+  # uid/gid from the checked-out repo into the target image.
+  run_logged cp -a --no-preserve=ownership "${RESOLVED_PROFILE_ROOTFS_OVERLAY_DIR}/." "${TARGET_ROOT}/"
+}
+
+function reset_profile_rootfs_ownership() {
+  run_logged chown root:root "${TARGET_ROOT}"
+  run_logged chown root:root "${TARGET_ROOT}/etc"
+  run_logged chown -R root:root "${TARGET_ROOT}/etc/cloud"
+}
+
+function validate_root_owned_path() {
+  local target_path="${1}"
+  local ownership=''
+
+  if [ ! -e "${target_path}" ]; then
+    printf 'Required path is missing from target image: %s\n' "${target_path}" >&2
+    return 1
+  fi
+
+  ownership="$(stat -c '%u:%g' "${target_path}")"
+
+  if [ "${ownership}" != "0:0" ]; then
+    printf 'Required path is not owned by root:root (%s): %s\n' "${ownership}" "${target_path}" >&2
+    return 1
+  fi
+}
+
+function validate_profile_rootfs_ownership() {
+  validate_root_owned_path "${TARGET_ROOT}"
+  validate_root_owned_path "${TARGET_ROOT}/etc"
+  validate_root_owned_path "${TARGET_ROOT}/etc/cloud"
+  validate_root_owned_path "${TARGET_ROOT}/etc/cloud/cloud.cfg.d"
 }
 
 function install_profile_pacman_packages() {
