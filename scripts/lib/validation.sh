@@ -37,18 +37,37 @@ function parse_size_to_bytes() {
   numfmt --from=iec "${size_value}"
 }
 
+function validate_release_version_value() {
+  local requested_release_version="${1:-}"
+
+  if [ -z "${requested_release_version}" ]; then
+    validation_fail "release version is required and must come from VERSION"
+    return 1
+  fi
+
+  if [[ "${requested_release_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+    return 0
+  fi
+
+  validation_fail "release version in VERSION must match SemVer such as 0.4.0 or 1.0.0-rc.1 (got: ${requested_release_version})"
+}
+
+function validate_build_id_value() {
+  local requested_build_id="${1:-}"
+
+  if [ -z "${requested_build_id}" ]; then
+    return 0
+  fi
+
+  if [[ "${requested_build_id}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
+    return 0
+  fi
+
+  validation_fail "BUILD_ID must match YYYYMMDD.N (got: ${requested_build_id})"
+}
+
 function validate_build_version_value() {
-  local requested_build_version="${1:-}"
-
-  if [ -z "${requested_build_version}" ]; then
-    return 0
-  fi
-
-  if [[ "${requested_build_version}" =~ ^[0-9]{8}\.[0-9]+$ ]]; then
-    return 0
-  fi
-
-  validation_fail "BUILD_VERSION must match YYYYMMDD.N (got: ${requested_build_version})"
+  validate_build_id_value "${1:-}"
 }
 
 function validate_size_value() {
@@ -241,9 +260,11 @@ function validate_image_customization_configuration() {
 }
 
 function validate_build_configuration() {
-  local requested_build_version="${1:-}"
+  local requested_release_version="${1:-}"
+  local requested_build_id="${2:-}"
 
-  validate_build_version_value "${requested_build_version}" || return 1
+  validate_release_version_value "${requested_release_version}" || return 1
+  validate_build_id_value "${requested_build_id}" || return 1
   validate_image_profile_value "${IMAGE_PROFILE:-generic-qemu}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1

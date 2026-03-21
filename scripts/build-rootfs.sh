@@ -182,7 +182,7 @@ function pack_rootfs_artifact() {
 
 function main() {
   require_root
-  resolve_build_context "${1:-${BUILD_VERSION:-}}"
+  resolve_build_context "${1:-}"
   ensure_directories "${ROOTFS_OUTPUT_DIR}" "${TMP_ROOT}"
 
   ROOTFS_STAGE_DIR="$(prepare_stage_workdir rootfs)"

@@ -18,7 +18,7 @@ source "${PROJECT_ROOT}/scripts/lib/logging.sh"
 function setup_logging() {
   ensure_directories "${ROOTFS_OUTPUT_DIR}" "${IMAGE_OUTPUT_DIR}" "${TMP_ROOT}"
 
-  BUILD_LOG="${IMAGE_OUTPUT_DIR}/${RESOLVED_IMAGE_NAME_PREFIX}-${BUILD_VERSION}.build.log"
+  BUILD_LOG="${BUILD_LOG_PATH}"
   export BUILD_LOG
   : > "${BUILD_LOG}"
   chown_to_invoking_user "${BUILD_LOG}" 2>/dev/null || true
@@ -29,10 +29,20 @@ function setup_logging() {
   exec >>"${BUILD_LOG}" 2>&1
 
   log_step "Writing build log to ${BUILD_LOG}"
+  status_line "Release version: ${RELEASE_VERSION}"
+  status_line "Build ID: ${BUILD_ID}"
+  status_line "Artifact version: ${ARTIFACT_VERSION}"
+  status_line "Git commit: ${GIT_COMMIT}"
+  status_line "Git tag: ${GIT_TAG}"
+  status_line "Profile: ${RESOLVED_IMAGE_PROFILE}"
 
-  if [ "${BUILD_VERSION_WAS_DEFAULTED}" -eq 1 ]; then
-    status_line "No explicit build version was provided."
-    status_line "Auto-selected build version ${BUILD_VERSION}"
+  if [ "${BUILD_ID_SOURCE}" = "legacy-build-version-env" ]; then
+    status_line "Using legacy BUILD_VERSION as BUILD_ID."
+  fi
+
+  if [ "${BUILD_ID_WAS_DEFAULTED}" -eq 1 ]; then
+    status_line "No explicit build ID was provided."
+    status_line "Auto-selected build ID ${BUILD_ID}"
   fi
 }
 
@@ -85,11 +95,11 @@ function main() {
   run_logged mkdir -p "${BUILD_WORKDIR}"
 
   log_step "Running Stage 1: build common rootfs"
-  run_logged bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_VERSION}"
+  run_logged bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_ID}"
   log_step "Running Stage 2: assemble profile-specific image"
-  run_logged bash "${PROJECT_ROOT}/scripts/assemble-image.sh" "${BUILD_VERSION}"
+  run_logged bash "${PROJECT_ROOT}/scripts/assemble-image.sh" "${BUILD_ID}"
   log_step "Running Stage 3: export final artifact"
-  run_logged bash "${PROJECT_ROOT}/scripts/export-image.sh" "${BUILD_VERSION}"
+  run_logged bash "${PROJECT_ROOT}/scripts/export-image.sh" "${BUILD_ID}"
 
   log_step "Build completed"
   status_line "Rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"

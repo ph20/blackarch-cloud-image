@@ -14,6 +14,8 @@ readonly IMAGE_OUTPUT_DIR
 readonly TMP_ROOT
 : "${PROFILES_DIR:=${PROJECT_ROOT}/profiles}"
 readonly PROFILES_DIR
+: "${VERSION_FILE:=${PROJECT_ROOT}/VERSION}"
+readonly VERSION_FILE
 : "${ROOTFS_NAME_PREFIX:=blackarch-rootfs}"
 readonly ROOTFS_NAME_PREFIX
 : "${IMAGE_NAME_PREFIX:=BlackArch-Linux-x86_64}"
@@ -22,7 +24,7 @@ readonly IMAGE_NAME_PREFIX
 # shellcheck source=scripts/lib/validation.sh
 source "${LIB_DIR}/validation.sh"
 
-function next_default_build_version() {
+function next_default_build_id() {
   local build_date=''
   local file_name=''
   local release=''
@@ -37,8 +39,8 @@ function next_default_build_version() {
     for path in "${ROOTFS_OUTPUT_DIR}"/* "${IMAGE_OUTPUT_DIR}"/*; do
       file_name="$(basename "${path}")"
 
-      if [[ "${file_name}" =~ -${build_date}\.([0-9]+)(\.|$) ]]; then
-        release="${BASH_REMATCH[1]}"
+      if [[ "${file_name}" =~ (\+|-)${build_date}\.([0-9]+)(\.|$) ]]; then
+        release="${BASH_REMATCH[2]}"
 
         if [ "${release}" -gt "${max_release}" ]; then
           max_release="${release}"
@@ -52,19 +54,103 @@ function next_default_build_version() {
   printf '%s.%s\n' "${build_date}" "$((max_release + 1))"
 }
 
-function resolve_build_version() {
-  if [ -n "${1:-}" ]; then
-    BUILD_VERSION="${1}"
-    BUILD_VERSION_WAS_DEFAULTED=0
-  elif [ -n "${BUILD_VERSION:-}" ]; then
-    BUILD_VERSION_WAS_DEFAULTED=0
-  else
-    BUILD_VERSION="$(next_default_build_version)"
-    BUILD_VERSION_WAS_DEFAULTED=1
+function resolve_release_version() {
+  local release_version=''
+
+  if [ ! -r "${VERSION_FILE}" ]; then
+    printf 'Missing VERSION file: %s\n' "${VERSION_FILE}" >&2
+    return 1
   fi
 
+  IFS= read -r release_version < "${VERSION_FILE}" || true
+  release_version="${release_version%$'\r'}"
+
+  if ! validate_release_version_value "${release_version}"; then
+    printf 'Malformed release version in %s\n' "${VERSION_FILE}" >&2
+    return 1
+  fi
+
+  RELEASE_VERSION="${release_version}"
+  export RELEASE_VERSION
+}
+
+function resolve_build_id() {
+  local requested_build_id="${1:-}"
+  local env_build_id="${BUILD_ID:-}"
+  local legacy_build_version="${BUILD_VERSION:-}"
+  local legacy_build_version_is_valid=0
+
+  if [ -n "${legacy_build_version}" ] && validate_build_id_value "${legacy_build_version}" >/dev/null 2>&1; then
+    legacy_build_version_is_valid=1
+  fi
+
+  if [ -n "${env_build_id}" ] && [ "${legacy_build_version_is_valid}" -eq 1 ] && [ "${env_build_id}" != "${legacy_build_version}" ]; then
+    printf 'BUILD_ID and legacy BUILD_VERSION must match when both are set (got: %s vs %s)\n' "${env_build_id}" "${legacy_build_version}" >&2
+    return 1
+  fi
+
+  if [ -n "${requested_build_id}" ]; then
+    if [ -n "${env_build_id}" ] && [ "${requested_build_id}" != "${env_build_id}" ]; then
+      printf 'Positional build ID and BUILD_ID must match when both are set (got: %s vs %s)\n' "${requested_build_id}" "${env_build_id}" >&2
+      return 1
+    fi
+
+    if [ "${legacy_build_version_is_valid}" -eq 1 ] && [ "${requested_build_id}" != "${legacy_build_version}" ]; then
+      printf 'Positional build ID and legacy BUILD_VERSION must match when both are set (got: %s vs %s)\n' "${requested_build_id}" "${legacy_build_version}" >&2
+      return 1
+    fi
+
+    BUILD_ID="${requested_build_id}"
+    BUILD_ID_WAS_DEFAULTED=0
+    BUILD_ID_SOURCE="argument"
+  elif [ -n "${env_build_id}" ]; then
+    BUILD_ID="${env_build_id}"
+    BUILD_ID_WAS_DEFAULTED=0
+    BUILD_ID_SOURCE="env"
+  elif [ "${legacy_build_version_is_valid}" -eq 1 ]; then
+    BUILD_ID="${legacy_build_version}"
+    BUILD_ID_WAS_DEFAULTED=0
+    BUILD_ID_SOURCE="legacy-build-version-env"
+  else
+    BUILD_ID="$(next_default_build_id)"
+    BUILD_ID_WAS_DEFAULTED=1
+    BUILD_ID_SOURCE="auto"
+  fi
+
+  BUILD_VERSION="${BUILD_ID}"
+  BUILD_VERSION_WAS_DEFAULTED="${BUILD_ID_WAS_DEFAULTED}"
+  export BUILD_ID
+  export BUILD_ID_WAS_DEFAULTED
+  export BUILD_ID_SOURCE
   export BUILD_VERSION
   export BUILD_VERSION_WAS_DEFAULTED
+}
+
+function resolve_artifact_version() {
+  ARTIFACT_VERSION="${RELEASE_VERSION}+${BUILD_ID}"
+  ARTIFACT_VERSION_TAG="v${ARTIFACT_VERSION}"
+
+  export ARTIFACT_VERSION
+  export ARTIFACT_VERSION_TAG
+}
+
+function resolve_git_metadata() {
+  GIT_COMMIT='unknown'
+  GIT_TAG='none'
+
+  if ! command -v git >/dev/null 2>&1; then
+    export GIT_COMMIT
+    export GIT_TAG
+    return 0
+  fi
+
+  if git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    GIT_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse --short=12 HEAD 2>/dev/null || printf '%s\n' 'unknown')"
+    GIT_TAG="$(git -C "${PROJECT_ROOT}" describe --tags --exact-match HEAD 2>/dev/null || printf '%s\n' 'none')"
+  fi
+
+  export GIT_COMMIT
+  export GIT_TAG
 }
 
 function resolve_profile_path() {
@@ -267,7 +353,10 @@ function load_image_profile() {
 }
 
 function resolve_build_context() {
-  resolve_build_version "${1:-}"
+  resolve_release_version
+  resolve_build_id "${1:-}"
+  resolve_artifact_version
+  resolve_git_metadata
   load_image_profile
 
   RESOLVED_BLACKARCH_PROFILE="${BLACKARCH_PROFILE:-core}"
@@ -281,13 +370,20 @@ function resolve_build_context() {
   RESOLVED_IMAGE_DEFAULT_USER="${IMAGE_DEFAULT_USER:-arch}"
   RESOLVED_IMAGE_DEFAULT_USER_GECOS="${IMAGE_DEFAULT_USER_GECOS:-BlackArch Cloud User}"
   RESOLVED_IMAGE_PASSWORDLESS_SUDO="${IMAGE_PASSWORDLESS_SUDO:-true}"
-  ROOTFS_ARTIFACT_PATH="${ROOTFS_OUTPUT_DIR}/${ROOTFS_NAME_PREFIX}-${BUILD_VERSION}.tar.zst"
-  ROOTFS_MANIFEST_PATH="${ROOTFS_OUTPUT_DIR}/${ROOTFS_NAME_PREFIX}-${BUILD_VERSION}.manifest"
-  BUILD_WORKDIR="${BUILD_WORKDIR:-${TMP_ROOT}/build-${BUILD_VERSION}-${RESOLVED_IMAGE_PROFILE}}"
-  STAGING_IMAGE_PATH="${BUILD_WORKDIR}/${RESOLVED_IMAGE_NAME_PREFIX}-${BUILD_VERSION}.raw"
-  FINAL_IMAGE_PATH="${IMAGE_OUTPUT_DIR}/${RESOLVED_IMAGE_NAME_PREFIX}-${BUILD_VERSION}.${RESOLVED_IMAGE_FINAL_FORMAT}"
-  FINAL_IMAGE_MANIFEST_PATH="${IMAGE_OUTPUT_DIR}/${RESOLVED_IMAGE_NAME_PREFIX}-${BUILD_VERSION}.manifest"
+  ROOTFS_ARTIFACT_NAME="${ROOTFS_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.tar.zst"
+  ROOTFS_MANIFEST_NAME="${ROOTFS_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.manifest"
+  BUILD_WORKDIR="${BUILD_WORKDIR:-${TMP_ROOT}/build-${ARTIFACT_VERSION_TAG}-${RESOLVED_IMAGE_PROFILE}}"
+  STAGING_IMAGE_NAME="${RESOLVED_IMAGE_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.raw"
+  FINAL_IMAGE_NAME="${RESOLVED_IMAGE_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.${RESOLVED_IMAGE_FINAL_FORMAT}"
+  FINAL_IMAGE_MANIFEST_NAME="${RESOLVED_IMAGE_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.manifest"
+  BUILD_LOG_NAME="${RESOLVED_IMAGE_NAME_PREFIX}-${ARTIFACT_VERSION_TAG}.build.log"
+  ROOTFS_ARTIFACT_PATH="${ROOTFS_OUTPUT_DIR}/${ROOTFS_ARTIFACT_NAME}"
+  ROOTFS_MANIFEST_PATH="${ROOTFS_OUTPUT_DIR}/${ROOTFS_MANIFEST_NAME}"
+  STAGING_IMAGE_PATH="${BUILD_WORKDIR}/${STAGING_IMAGE_NAME}"
+  FINAL_IMAGE_PATH="${IMAGE_OUTPUT_DIR}/${FINAL_IMAGE_NAME}"
+  FINAL_IMAGE_MANIFEST_PATH="${IMAGE_OUTPUT_DIR}/${FINAL_IMAGE_MANIFEST_NAME}"
   FINAL_IMAGE_CHECKSUM_PATH="${FINAL_IMAGE_PATH}.SHA256"
+  BUILD_LOG_PATH="${IMAGE_OUTPUT_DIR}/${BUILD_LOG_NAME}"
 
   export IMAGE_PROFILE="${RESOLVED_IMAGE_PROFILE}"
   export IMAGE_ENABLE_QEMU_GUEST_AGENT="${RESOLVED_IMAGE_ENABLE_QEMU_GUEST_AGENT}"
@@ -311,13 +407,20 @@ function resolve_build_context() {
   export RESOLVED_IMAGE_DEFAULT_USER
   export RESOLVED_IMAGE_DEFAULT_USER_GECOS
   export RESOLVED_IMAGE_PASSWORDLESS_SUDO
+  export ROOTFS_ARTIFACT_NAME
+  export ROOTFS_MANIFEST_NAME
   export ROOTFS_ARTIFACT_PATH
   export ROOTFS_MANIFEST_PATH
   export BUILD_WORKDIR
+  export STAGING_IMAGE_NAME
   export STAGING_IMAGE_PATH
+  export FINAL_IMAGE_NAME
   export FINAL_IMAGE_PATH
+  export FINAL_IMAGE_MANIFEST_NAME
   export FINAL_IMAGE_MANIFEST_PATH
   export FINAL_IMAGE_CHECKSUM_PATH
+  export BUILD_LOG_NAME
+  export BUILD_LOG_PATH
 
-  validate_build_configuration "${BUILD_VERSION}"
+  validate_build_configuration "${RELEASE_VERSION}" "${BUILD_ID}"
 }

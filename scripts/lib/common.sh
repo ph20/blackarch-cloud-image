@@ -27,9 +27,11 @@ function current_timestamp_utc() {
 function prepare_stage_workdir() {
   local stage_name="${1}"
   local stage_path=''
+  local workdir_profile=''
 
   if [ -z "${BUILD_WORKDIR:-}" ]; then
-    BUILD_WORKDIR="${TMP_ROOT}/build-${BUILD_VERSION}-${IMAGE_PROFILE}"
+    workdir_profile="${RESOLVED_IMAGE_PROFILE:-${IMAGE_PROFILE:-generic-qemu}}"
+    BUILD_WORKDIR="${TMP_ROOT}/build-${ARTIFACT_VERSION_TAG}-${workdir_profile}"
     export BUILD_WORKDIR
   fi
 

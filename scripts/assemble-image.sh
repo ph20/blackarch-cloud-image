@@ -42,7 +42,7 @@ function restore_rootfs_artifact() {
 
 function main() {
   require_root
-  resolve_build_context "${1:-${BUILD_VERSION:-}}"
+  resolve_build_context "${1:-}"
   ensure_directories "${TMP_ROOT}" "${BUILD_WORKDIR}"
 
   ASSEMBLY_STAGE_DIR="$(prepare_stage_workdir assemble)"

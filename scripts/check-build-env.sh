@@ -40,16 +40,21 @@ function check_linux_host() {
 function check_arch_family_host() {
   local os_id=''
   local os_like=''
+  local os_release_fields=''
 
   if [ ! -r /etc/os-release ]; then
     report_fail "cannot read /etc/os-release to detect the host distribution"
     return
   fi
 
-  # shellcheck disable=SC1091
-  source /etc/os-release
-  os_id="${ID:-}"
-  os_like="${ID_LIKE:-}"
+  os_release_fields="$(
+    # shellcheck disable=SC1091
+    (
+      source /etc/os-release
+      printf '%s\t%s\n' "${ID:-}" "${ID_LIKE:-}"
+    )
+  )"
+  IFS=$'\t' read -r os_id os_like <<<"${os_release_fields}"
 
   if printf '%s\n' "${os_id} ${os_like}" | grep -Eq '(^|[[:space:]])(arch|manjaro)($|[[:space:]])'; then
     report_ok "host distribution is Arch-based (${os_id:-unknown})"
@@ -229,7 +234,7 @@ function check_network_access() {
 }
 
 function check_configuration() {
-  if load_image_profile && validate_build_configuration "${BUILD_VERSION:-}"; then
+  if resolve_build_context; then
     report_ok "build configuration is valid"
   else
     report_fail "invalid build configuration"

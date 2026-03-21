@@ -60,6 +60,7 @@ The assembled image includes:
 ```text
 .
 ├── build.sh                         # Thin user-facing orchestrator
+├── VERSION                          # Canonical codebase release version (SemVer)
 ├── profiles/
 │   ├── digitalocean.env             # DigitalOcean profile defaults
 │   ├── digitalocean.sh              # Optional DigitalOcean profile hook
@@ -139,10 +140,16 @@ DigitalOcean export:
 sudo IMAGE_PROFILE=digitalocean ./build.sh
 ```
 
-Explicit build version:
+Explicit build ID:
 
 ```bash
 sudo IMAGE_PROFILE=generic-qemu ./build.sh 20260320.0
+```
+
+Explicit build ID via environment:
+
+```bash
+sudo IMAGE_PROFILE=generic-qemu BUILD_ID=20260320.0 ./build.sh
 ```
 
 Curated `common` BlackArch profile:
@@ -175,14 +182,78 @@ IMAGE_PROFILE=digitalocean make build
 IMAGE_PROFILE=generic-qemu BLACKARCH_PROFILE=common DISK_SIZE=20G make build
 ```
 
+```bash
+IMAGE_PROFILE=digitalocean BUILD_ID=20260321.2 make build
+```
+
+## Versioning
+
+The builder resolves three separate version values:
+
+- `release_version`
+  The codebase release version. This is read from the top-level `VERSION` file and must be SemVer such as `0.4.0`, `0.4.1`, `0.5.0`, or `1.0.0-rc.1`.
+- `build_id`
+  The concrete artifact build identity. This uses `YYYYMMDD.N`, for example `20260321.2`.
+- `artifact_version`
+  The combined artifact identifier: `<release_version>+<build_id>`, for example `0.4.0+20260321.2`.
+
+`build_id` resolution order is:
+
+1. positional argument to `./build.sh`
+2. `BUILD_ID`
+3. legacy `BUILD_VERSION`
+4. auto-generated next `YYYYMMDD.N` based on existing files under `output/`
+
+If `BUILD_ID` and `BUILD_VERSION` are both set, they must match. Legacy `BUILD_VERSION` is only consumed when it already matches `YYYYMMDD.N`; unrelated ambient values are ignored.
+
+Artifact filenames include both pieces of information:
+
+- `BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.<ext>`
+- `blackarch-rootfs-v<release_version>+<build_id>.tar.zst`
+
+The manifests remain `key=value` files and record explicit version/build metadata, including:
+
+- `release_version`
+- `build_id`
+- `artifact_version`
+- `git_commit`
+- `git_tag`
+- `profile`
+- `artifact_format`
+- `filesystem`
+- `boot_mode`
+- `built_at_utc`
+
+When `HEAD` is not at an exact tag, `git_tag=none`.
+
+## Release Workflow
+
+To create a release:
+
+1. Update `VERSION` to the new SemVer release.
+2. Commit the change.
+3. Optionally tag the release commit as `v<release_version>`.
+4. Run one or more builds. Each build gets its own `build_id`, even when `VERSION` stays the same.
+
+Version bump policy:
+
+- Patch bump: bug fixes, build logic fixes, boot fixes, cloud-init fixes, ownership fixes, and other backwards-compatible maintenance.
+- Minor bump: new profiles, new artifact formats, additive profile features, additive manifest fields, or additive release-workflow improvements.
+- Major bump: incompatible environment variable changes, incompatible profile schema changes, incompatible manifest changes, or output naming changes that downstream automation must adapt to.
+- Rebuild only: keep `VERSION` unchanged and produce a new `build_id`. Do not mint a new SemVer just to rebuild the same release.
+
 ## Configuration
 
 Core staged-build settings:
 
+- `VERSION`
+  Top-level repository file containing the canonical SemVer `release_version`.
 - `IMAGE_PROFILE`
   `generic-qemu` or `digitalocean`. Default: `generic-qemu`.
+- `BUILD_ID`
+  Optional explicit `YYYYMMDD.N` build identity. If unset, the builder auto-selects the next daily build number.
 - `BUILD_VERSION`
-  Optional explicit artifact version. If unset, the build auto-selects the next `YYYYMMDD.N` value.
+  Legacy compatibility alias for `BUILD_ID`. It is only honored when it already matches `YYYYMMDD.N`. Prefer `BUILD_ID` for new automation.
 - `DISK_SIZE`
   Final raw disk size used for Stage 2 assembly.
 - `DEFAULT_DISK_SIZE`
@@ -291,30 +362,47 @@ function profile_hook() {
 
 Successful builds write staged artifacts under `output/`:
 
-- `output/rootfs/blackarch-rootfs-<version>.tar.zst`
-- `output/rootfs/blackarch-rootfs-<version>.manifest`
-- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2`
-- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2.SHA256`
-- `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.manifest`
-- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.img.gz`
-- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.img.gz.SHA256`
-- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.manifest`
-- `output/images/BlackArch-Linux-x86_64-<profile>-<version>.build.log`
+- `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.tar.zst`
+- `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.manifest`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2.SHA256`
+- `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.manifest`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz.SHA256`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.manifest`
+- `output/images/BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.build.log`
 
-The manifest files are simple `key=value` records with the resolved build metadata for the rootfs and final image artifacts.
+The manifest files are simple `key=value` records. Final image manifests include:
+
+- `artifact_type`
+- `image_name`
+- `artifact_name`
+- `artifact_format`
+- `rootfs_artifact`
+- `release_version`
+- `build_id`
+- `artifact_version`
+- `git_commit`
+- `git_tag`
+- `profile`
+- `filesystem`
+- `boot_mode`
+- `built_at_utc`
+
+They also keep resolved build settings such as disk size, BlackArch profile/package selections, profile package/unit lists, and image customization defaults.
 
 Verify the final checksum after a build:
 
 ```bash
 cd output/images
-sha256sum -c BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2.SHA256
+sha256sum -c BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2.SHA256
 ```
 
 or:
 
 ```bash
 cd output/images
-sha256sum -c BlackArch-Linux-x86_64-digitalocean-<version>.img.gz.SHA256
+sha256sum -c BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz.SHA256
 ```
 
 DigitalOcean note:

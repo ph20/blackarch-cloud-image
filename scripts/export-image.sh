@@ -35,7 +35,7 @@ function write_checksum() {
 
 function main() {
   require_root
-  resolve_build_context "${1:-${BUILD_VERSION:-}}"
+  resolve_build_context "${1:-}"
   ensure_directories "${IMAGE_OUTPUT_DIR}"
 
   if [ ! -f "${STAGING_IMAGE_PATH}" ]; then
