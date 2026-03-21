@@ -48,7 +48,7 @@ function main() {
     qcow2)
       export_qcow2
       ;;
-    raw.gz)
+    raw.gz | img.gz)
       export_raw_gz
       ;;
     *)

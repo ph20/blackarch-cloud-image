@@ -1,4 +1,5 @@
 BUILD_VERSION ?=
+SUDO_PRESERVE_ENV := IMAGE_PROFILE,BUILD_VERSION,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO
 
 .PHONY: build check-env lint clean help
 
@@ -7,7 +8,7 @@ build: check-env
 		./build.sh $(BUILD_VERSION); \
 	else \
 		printf '%s\n' 'Root access is required to create loop devices, mount filesystems, install packages, and write the image artifact.'; \
-		sudo -p '[sudo] Enter your password to continue the BlackArch image build for %p: ' ./build.sh $(BUILD_VERSION); \
+		sudo --preserve-env=$(SUDO_PRESERVE_ENV) -p '[sudo] Enter your password to continue the BlackArch image build for %p: ' ./build.sh $(BUILD_VERSION); \
 	fi
 
 check-env:
@@ -25,7 +26,7 @@ help:
 		'Usage: make [target] [BUILD_VERSION=<version>]' \
 		'Default profile: IMAGE_PROFILE=generic-qemu.' \
 		'Non-root builds prompt for sudo before running ./build.sh.' \
-		'Use direct sudo ./build.sh invocations for non-default environment overrides.' \
+		'`make build` preserves supported image/build environment overrides across sudo.' \
 		'' \
 		'Targets:' \
 		'  build      Run the staged build pipeline and write artifacts under output/rootfs and output/images' \

@@ -98,6 +98,20 @@ function validate_image_profile_value() {
   esac
 }
 
+function validate_root_fs_type_value() {
+  local root_fs_type="${1}"
+
+  case "${root_fs_type}" in
+    btrfs | ext4)
+      return 0
+      ;;
+    *)
+      validation_fail "profile root filesystem type must be one of: btrfs, ext4 (got: ${root_fs_type})"
+      return 1
+      ;;
+  esac
+}
+
 function validate_blackarch_bootstrap_configuration() {
   local keyring_version="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 

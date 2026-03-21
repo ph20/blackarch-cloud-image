@@ -70,6 +70,7 @@ function check_required_commands() {
     gzip
     losetup
     mkfs.btrfs
+    mkfs.ext4
     mkfs.fat
     mount
     mountpoint

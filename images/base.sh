@@ -47,20 +47,54 @@ EOF
 function configure_base_image() {
   rm -f "${TARGET_ROOT}/etc/machine-id"
 
-  arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs subvolume create /swap
-  chattr +C "${TARGET_ROOT}/swap"
-  chmod 0700 "${TARGET_ROOT}/swap"
-  arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs filesystem mkswapfile --size "${RESOLVED_IMAGE_SWAP_SIZE}" --uuid clear /swap/swapfile
-  echo "/swap/swapfile none swap defaults 0 0" >>"${TARGET_ROOT}/etc/fstab"
+  configure_image_swapfile
 
   arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=i386-pc "${TARGET_LOOP_DEVICE}"
   arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=x86_64-efi --efi-directory=/efi --removable
   sed -i 's/^GRUB_TIMEOUT=.*$/GRUB_TIMEOUT=1/' "${TARGET_ROOT}/etc/default/grub"
   sed -i 's/^GRUB_CMDLINE_LINUX=.*$/GRUB_CMDLINE_LINUX="net.ifnames=0"/' "${TARGET_ROOT}/etc/default/grub"
-  sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="rootflags=compress=zstd:1 console=tty0 console=ttyS0,115200"/' "${TARGET_ROOT}/etc/default/grub"
+  sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$(grub_linux_default_cmdline)\"/" "${TARGET_ROOT}/etc/default/grub"
   echo 'GRUB_TERMINAL="serial console"' >>"${TARGET_ROOT}/etc/default/grub"
   echo 'GRUB_SERIAL_COMMAND="serial --speed=115200"' >>"${TARGET_ROOT}/etc/default/grub"
   arch-chroot "${TARGET_ROOT}" /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg
+}
+
+function configure_image_swapfile() {
+  case "${RESOLVED_IMAGE_ROOT_FS_TYPE}" in
+    btrfs)
+      arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs subvolume create /swap
+      chattr +C "${TARGET_ROOT}/swap"
+      chmod 0700 "${TARGET_ROOT}/swap"
+      arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs filesystem mkswapfile --size "${RESOLVED_IMAGE_SWAP_SIZE}" --uuid clear /swap/swapfile
+      echo "/swap/swapfile none swap defaults 0 0" >>"${TARGET_ROOT}/etc/fstab"
+      ;;
+    ext4)
+      # shellcheck disable=SC2016
+      arch-chroot "${TARGET_ROOT}" /bin/bash -e -c \
+        'fallocate -l "$1" /swapfile && chmod 0600 /swapfile && mkswap /swapfile' \
+        _ "${RESOLVED_IMAGE_SWAP_SIZE}"
+      echo "/swapfile none swap defaults 0 0" >>"${TARGET_ROOT}/etc/fstab"
+      ;;
+    *)
+      printf 'Unsupported root filesystem type: %s\n' "${RESOLVED_IMAGE_ROOT_FS_TYPE}" >&2
+      return 1
+      ;;
+  esac
+}
+
+function grub_linux_default_cmdline() {
+  case "${RESOLVED_IMAGE_ROOT_FS_TYPE}" in
+    btrfs)
+      printf '%s\n' 'rootflags=compress=zstd:1 console=tty0 console=ttyS0,115200'
+      ;;
+    ext4)
+      printf '%s\n' 'console=tty0 console=ttyS0,115200'
+      ;;
+    *)
+      printf 'Unsupported root filesystem type: %s\n' "${RESOLVED_IMAGE_ROOT_FS_TYPE}" >&2
+      return 1
+      ;;
+  esac
 }
 
 function finalize_base_image() {

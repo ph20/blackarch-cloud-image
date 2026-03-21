@@ -1,18 +1,31 @@
 #!/usr/bin/env bash
 
-function unmount_mount_tree() {
+function mount_targets_under_root() {
   local mount_root="${1}"
 
-  if ! mountpoint -q "${mount_root}"; then
-    return 0
-  fi
+  findmnt -rn -o TARGET | awk -v root="${mount_root}" '
+    ($0 == root || index($0, root "/") == 1) && !seen[$0]++ {
+      print length($0) " " $0
+    }
+  ' | sort -rn | cut -d' ' -f2-
+}
 
-  if umount --recursive "${mount_root}"; then
-    return 0
-  fi
+function unmount_mount_tree() {
+  local mount_root="${1}"
+  local target=''
 
-  status_line "Standard unmount failed for ${mount_root}; retrying with lazy unmount."
-  umount --recursive --lazy "${mount_root}"
+  while IFS= read -r target; do
+    if [ -z "${target}" ]; then
+      continue
+    fi
+
+    if umount "${target}" 2>/dev/null; then
+      continue
+    fi
+
+    status_line "Standard unmount failed for ${target}; retrying with lazy unmount."
+    umount --lazy "${target}"
+  done < <(mount_targets_under_root "${mount_root}")
 }
 
 function detach_loop_device() {
@@ -56,6 +69,41 @@ function create_partitioned_raw_image() {
     "${image_path}"
 }
 
+function format_root_filesystem() {
+  local root_partition="${1}"
+
+  case "${RESOLVED_IMAGE_ROOT_FS_TYPE}" in
+    btrfs)
+      mkfs.btrfs "${root_partition}"
+      ;;
+    ext4)
+      mkfs.ext4 -F "${root_partition}"
+      ;;
+    *)
+      printf 'Unsupported root filesystem type: %s\n' "${RESOLVED_IMAGE_ROOT_FS_TYPE}" >&2
+      return 1
+      ;;
+  esac
+}
+
+function mount_root_filesystem() {
+  local root_partition="${1}"
+  local mount_root="${2}"
+
+  case "${RESOLVED_IMAGE_ROOT_FS_TYPE}" in
+    btrfs)
+      mount -o compress=zstd:1 "${root_partition}" "${mount_root}"
+      ;;
+    ext4)
+      mount "${root_partition}" "${mount_root}"
+      ;;
+    *)
+      printf 'Unsupported root filesystem type: %s\n' "${RESOLVED_IMAGE_ROOT_FS_TYPE}" >&2
+      return 1
+      ;;
+  esac
+}
+
 function mount_new_raw_image() {
   local image_path="${1}"
   local mount_root="${2}"
@@ -65,9 +113,9 @@ function mount_new_raw_image() {
   wait_until_partitions_exist "${TARGET_LOOP_DEVICE}"
 
   mkfs.fat -F 32 -S 4096 "${TARGET_LOOP_DEVICE}p2"
-  mkfs.btrfs "${TARGET_LOOP_DEVICE}p3"
+  format_root_filesystem "${TARGET_LOOP_DEVICE}p3"
 
-  mount -o compress=zstd:1 "${TARGET_LOOP_DEVICE}p3" "${mount_root}"
+  mount_root_filesystem "${TARGET_LOOP_DEVICE}p3" "${mount_root}"
   mount --mkdir "${TARGET_LOOP_DEVICE}p2" "${mount_root}/efi"
 }
 
