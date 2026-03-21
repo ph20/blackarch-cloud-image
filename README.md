@@ -11,9 +11,9 @@ The build flow is intentionally shell-only:
 Supported platform profiles:
 
 - `generic-qemu`
-  Exports `qcow2` and enables `qemu-guest-agent`.
+  Exports `qcow2`, uses a Btrfs root filesystem, enables `qemu-guest-agent`, and defaults to `2G`.
 - `digitalocean`
-  Exports `raw.gz` and disables `qemu-guest-agent`.
+  Exports `img.gz`, uses an ext4 root filesystem, disables `qemu-guest-agent`, and defaults to `4G`.
 
 The profile layer is intentionally small today. Future platforms should be added by introducing new profile files and localized profile logic, not by cloning the whole pipeline.
 
@@ -32,10 +32,12 @@ The common rootfs stage includes:
 
 The assembled image includes:
 
-- Btrfs root filesystem with Zstandard compression
 - GRUB configured for BIOS and UEFI boot
 - serial console on `tty0` and `ttyS0`
 - `systemd-networkd`, `systemd-resolved`, `systemd-timesyncd`, and `sshd`
+- profile-specific root filesystem behavior:
+  `generic-qemu` uses Btrfs with Zstandard compression
+  `digitalocean` uses ext4
 
 ## Project layout
 
@@ -43,7 +45,7 @@ The assembled image includes:
 .
 ├── build.sh                         # Thin user-facing orchestrator
 ├── profiles/
-│   ├── digitalocean.env             # raw.gz export, qemu guest agent disabled
+│   ├── digitalocean.env             # img.gz export, qemu guest agent disabled
 │   └── generic-qemu.env             # qcow2 export, qemu guest agent enabled
 ├── images/
 │   ├── base.sh                      # Common rootfs and bootable disk customization hooks
@@ -79,6 +81,7 @@ Required commands:
 - `gzip`
 - `losetup`
 - `mkfs.btrfs`
+- `mkfs.ext4`
 - `mkfs.fat`
 - `mount`
 - `mountpoint`
@@ -138,7 +141,17 @@ You can also run the convenience target:
 make build
 ```
 
-`make build` is best for the default configuration. For non-default environment variables, prefer invoking `sudo ./build.sh` directly so the settings are preserved across privilege escalation.
+`make build` preserves the supported image/build environment variables across `sudo`, so profile and package overrides work there too.
+
+Examples:
+
+```bash
+IMAGE_PROFILE=digitalocean make build
+```
+
+```bash
+IMAGE_PROFILE=generic-qemu BLACKARCH_PROFILE=common DISK_SIZE=20G make build
+```
 
 ## Configuration
 
@@ -151,7 +164,10 @@ Core staged-build settings:
 - `DISK_SIZE`
   Final raw disk size used for Stage 2 assembly.
 - `DEFAULT_DISK_SIZE`
-  Compatibility default used when `DISK_SIZE` is unset. Default: `2G`.
+  Compatibility override used when `DISK_SIZE` is unset.
+  If neither is set, the profile default is used:
+  `generic-qemu` => `2G`
+  `digitalocean` => `4G`
 
 BlackArch settings:
 
@@ -191,8 +207,8 @@ Successful builds write staged artifacts under `output/`:
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2`
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.qcow2.SHA256`
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-<version>.manifest`
-- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz`
-- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz.SHA256`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.img.gz`
+- `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.img.gz.SHA256`
 - `output/images/BlackArch-Linux-x86_64-digitalocean-<version>.manifest`
 - `output/images/BlackArch-Linux-x86_64-<profile>-<version>.build.log`
 
@@ -209,8 +225,14 @@ or:
 
 ```bash
 cd output/images
-sha256sum -c BlackArch-Linux-x86_64-digitalocean-<version>.raw.gz.SHA256
+sha256sum -c BlackArch-Linux-x86_64-digitalocean-<version>.img.gz.SHA256
 ```
+
+DigitalOcean note:
+
+- the profile now exports a gzip-compressed raw image with an `.img.gz` name
+- the profile now assembles an ext4-root image instead of Btrfs
+- runtime platform validation is still not implemented, so DigitalOcean-specific boot/import verification is still manual
 
 ## First boot defaults
 
