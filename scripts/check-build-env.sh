@@ -234,7 +234,7 @@ function check_network_access() {
 }
 
 function check_configuration() {
-  if resolve_build_context; then
+  if resolve_build_context "${1:-}"; then
     report_ok "build configuration is valid"
   else
     report_fail "invalid build configuration"
@@ -254,7 +254,7 @@ function print_summary() {
 function main() {
   check_linux_host
   check_arch_family_host
-  check_configuration
+  check_configuration "${1:-}"
   check_required_commands
   check_privilege_escalation
   check_loop_device_support
@@ -263,4 +263,4 @@ function main() {
   print_summary
 }
 
-main
+main "${1:-}"
