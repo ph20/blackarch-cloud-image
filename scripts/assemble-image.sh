@@ -62,11 +62,17 @@ function main() {
   log_step "Stage 2: restoring common rootfs artifact"
   restore_rootfs_artifact
 
+  log_step "Stage 2: applying ${RESOLVED_IMAGE_PROFILE} pre-boot customization"
+  apply_profile_rootfs_overlay
+  install_profile_pacman_packages
+
   log_step "Stage 2: applying bootable disk customization"
   configure_base_image
 
-  log_step "Stage 2: applying ${RESOLVED_IMAGE_PROFILE} profile customization"
-  apply_profile_image_customization
+  log_step "Stage 2: finalizing ${RESOLVED_IMAGE_PROFILE} profile customization"
+  enable_profile_systemd_units
+  disable_profile_systemd_units
+  run_profile_hook finalize
 
   log_step "Stage 2: finalizing raw staging image"
   finalize_base_image

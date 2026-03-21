@@ -12,8 +12,8 @@ readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
 
-# shellcheck source=scripts/lib/validation.sh
-source "${SCRIPT_DIR}/lib/validation.sh"
+# shellcheck source=scripts/lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
 
 readonly BLACKARCH_KEYRING_VERSION="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 readonly BLACKARCH_KEYRING_URL="https://www.blackarch.org/keyring/blackarch-keyring-${BLACKARCH_KEYRING_VERSION}.tar.gz"
@@ -62,16 +62,12 @@ function check_required_commands() {
   local -a required_commands=(
     arch-chroot
     blockdev
-    btrfs
-    chattr
     curl
     fstrim
     gpgconf
     gzip
     losetup
-    mkfs.btrfs
     mkfs.ext4
-    mkfs.fat
     mount
     mountpoint
     pacman
@@ -87,6 +83,20 @@ function check_required_commands() {
   )
   local -a missing_commands=()
   local cmd=''
+  local root_fs_type="${RESOLVED_IMAGE_ROOT_FS_TYPE:-}"
+  local boot_mode="${RESOLVED_IMAGE_BOOT_MODE:-}"
+
+  case "${root_fs_type}" in
+    btrfs | '')
+      required_commands+=(btrfs chattr mkfs.btrfs)
+      ;;
+  esac
+
+  case "${boot_mode}" in
+    bios+uefi | '')
+      required_commands+=(mkfs.fat)
+      ;;
+  esac
 
   if [ "$(id -u)" -ne 0 ]; then
     required_commands+=(sudo)
@@ -219,7 +229,7 @@ function check_network_access() {
 }
 
 function check_configuration() {
-  if validate_build_configuration "${BUILD_VERSION:-}"; then
+  if load_image_profile && validate_build_configuration "${BUILD_VERSION:-}"; then
     report_ok "build configuration is valid"
   else
     report_fail "invalid build configuration"
@@ -239,8 +249,8 @@ function print_summary() {
 function main() {
   check_linux_host
   check_arch_family_host
-  check_required_commands
   check_configuration
+  check_required_commands
   check_privilege_escalation
   check_loop_device_support
   check_free_space

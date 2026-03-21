@@ -3,6 +3,7 @@
 readonly DEFAULT_BLACKARCH_KEYRING_VERSION="20251011"
 readonly MIN_IMAGE_SIZE_BYTES=$((2 * 1024 * 1024 * 1024))
 readonly MIN_SWAP_SIZE_BYTES=$((64 * 1024 * 1024))
+readonly MIN_PARTITION_SIZE_BYTES=$((1024 * 1024))
 
 function validation_fail() {
   echo "${1}" >&2
@@ -70,6 +71,26 @@ function validate_size_value() {
   fi
 }
 
+function validate_partition_size_value() {
+  local env_name="${1}"
+  local size_value="${2:-}"
+  local size_bytes=''
+
+  if [ -z "${size_value}" ]; then
+    return 0
+  fi
+
+  if ! size_bytes="$(parse_size_to_bytes "${size_value}")"; then
+    validation_fail "${env_name} must be a truncate-compatible size such as 300M or 1G (got: ${size_value})"
+    return 1
+  fi
+
+  if [ "${size_bytes}" -lt "${MIN_PARTITION_SIZE_BYTES}" ]; then
+    validation_fail "${env_name} must be at least 1M (got: ${size_value})"
+    return 1
+  fi
+}
+
 function validate_blackarch_profile_value() {
   local profile="${1:-core}"
 
@@ -107,6 +128,34 @@ function validate_root_fs_type_value() {
       ;;
     *)
       validation_fail "profile root filesystem type must be one of: btrfs, ext4 (got: ${root_fs_type})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_final_format_value() {
+  local final_format="${1}"
+
+  case "${final_format}" in
+    qcow2 | raw.gz | img.gz)
+      return 0
+      ;;
+    *)
+      validation_fail "profile final image format must be one of: qcow2, raw.gz, img.gz (got: ${final_format})"
+      return 1
+      ;;
+  esac
+}
+
+function validate_boot_mode_value() {
+  local boot_mode="${1}"
+
+  case "${boot_mode}" in
+    bios | bios+uefi)
+      return 0
+      ;;
+    *)
+      validation_fail "PROFILE_BOOT_MODE must be one of: bios, bios+uefi (got: ${boot_mode})"
       return 1
       ;;
   esac

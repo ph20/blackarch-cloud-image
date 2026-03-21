@@ -15,8 +15,8 @@ check-env:
 	bash ./scripts/check-build-env.sh
 
 lint:
-	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env
-	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env
+	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh
+	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh
 
 clean:
 	bash ./scripts/clean-build-state.sh
