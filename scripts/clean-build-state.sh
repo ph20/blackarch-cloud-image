@@ -69,19 +69,45 @@ function require_root_for_cleanup() {
 
 function unmount_tmp_mounts() {
   local target=''
+  local attempts=3
 
-  while IFS= read -r target; do
-    if [ -z "${target}" ]; then
-      continue
+  while [ "${attempts}" -gt 0 ]; do
+    while IFS= read -r target; do
+      if [ -z "${target}" ]; then
+        continue
+      fi
+
+      if umount "${target}" 2>/dev/null; then
+        continue
+      fi
+
+      printf 'Unmounting busy target with lazy unmount: %s\n' "${target}"
+      umount --lazy "${target}"
+    done < <(mount_targets_under_tmp)
+
+    if [ -z "$(mount_targets_under_tmp)" ]; then
+      return 0
     fi
 
-    if umount "${target}" 2>/dev/null; then
-      continue
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+}
+
+function remove_tmp_tree() {
+  local attempts=3
+
+  while [ "${attempts}" -gt 0 ]; do
+    if rm -rf --one-file-system "${TMP_ROOT}" 2>/dev/null; then
+      return 0
     fi
 
-    printf 'Unmounting busy target with lazy unmount: %s\n' "${target}"
-    umount --lazy "${target}"
-  done < <(mount_targets_under_tmp)
+    unmount_tmp_mounts
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+
+  rm -rf --one-file-system "${TMP_ROOT}"
 }
 
 function detach_tmp_loop_devices() {
@@ -112,7 +138,7 @@ function main() {
   if [ -d "${TMP_ROOT}" ]; then
     unmount_tmp_mounts
     detach_tmp_loop_devices
-    rm -rf "${TMP_ROOT}"
+    remove_tmp_tree
   fi
 
   remove_output_artifacts
