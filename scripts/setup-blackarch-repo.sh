@@ -12,6 +12,7 @@ readonly KEYRING_URL="https://www.blackarch.org/keyring/${KEYRING_ARCHIVE}"
 readonly MIRRORLIST_URL="https://blackarch.org/blackarch-mirrorlist"
 readonly MIRRORLIST_PATH="/etc/pacman.d/blackarch-mirrorlist"
 readonly PACMAN_CONF="/etc/pacman.conf"
+readonly PACMAN_COMMAND_CONF="${BLACKARCH_PACMAN_CONFIG:-${PACMAN_CONF}}"
 readonly PACMAN_KEYRING_DIR="/usr/share/pacman/keyrings"
 WORKDIR="$(mktemp -d)"
 readonly WORKDIR
@@ -22,11 +23,11 @@ function cleanup() {
 trap cleanup EXIT
 
 function pacman_refresh() {
-  pacman -Syy --noconfirm --noprogressbar --color never
+  pacman --config "${PACMAN_COMMAND_CONF}" -Syy --noconfirm --noprogressbar --color never
 }
 
 function pacman_sync() {
-  pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
+  pacman --config "${PACMAN_COMMAND_CONF}" -S --noconfirm --needed --noprogressbar --color never "${@}"
 }
 
 function fail() {
@@ -136,15 +137,25 @@ function install_mirrorlist() {
   install -Dm0644 "${mirrorlist_path_tmp}" "${MIRRORLIST_PATH}"
 }
 
-function ensure_blackarch_repo() {
-  if grep -q '^\[blackarch\]$' "${PACMAN_CONF}"; then
+function ensure_blackarch_repo_in_config() {
+  local config_path="${1}"
+
+  if grep -q '^\[blackarch\]$' "${config_path}"; then
     return
   fi
 
-  cat >> "${PACMAN_CONF}" <<'EOF'
+  cat >> "${config_path}" <<'EOF'
 [blackarch]
 Include = /etc/pacman.d/blackarch-mirrorlist
 EOF
+}
+
+function ensure_blackarch_repo() {
+  ensure_blackarch_repo_in_config "${PACMAN_CONF}"
+
+  if [ "${PACMAN_COMMAND_CONF}" != "${PACMAN_CONF}" ]; then
+    ensure_blackarch_repo_in_config "${PACMAN_COMMAND_CONF}"
+  fi
 }
 
 function sync_blackarch_repo() {

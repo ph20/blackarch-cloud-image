@@ -2,7 +2,13 @@
 # shellcheck disable=SC2154
 
 function chroot_pacman_sync() {
-  arch-chroot "${TARGET_ROOT}" /usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never "${@}"
+  local -a pacman_command=(/usr/bin/pacman -S --noconfirm --needed --noprogressbar --color never)
+
+  if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
+    pacman_command+=(--config "${TARGET_PACMAN_CONFIG}")
+  fi
+
+  arch-chroot "${TARGET_ROOT}" "${pacman_command[@]}" "${@}"
 }
 
 function install_blackarch_profile() {
@@ -82,6 +88,10 @@ function configure_blackarch_rootfs() {
 
   if [ -n "${BLACKARCH_STRAP_SHA256:-}" ]; then
     setup_env+=("BLACKARCH_STRAP_SHA256=${BLACKARCH_STRAP_SHA256}")
+  fi
+
+  if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
+    setup_env+=("BLACKARCH_PACMAN_CONFIG=${TARGET_PACMAN_CONFIG}")
   fi
 
   setup_env+=(/root/setup-blackarch-repo.sh)

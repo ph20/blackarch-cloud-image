@@ -18,8 +18,16 @@ source "${SCRIPT_DIR}/lib/config.sh"
 source "${SCRIPT_DIR}/lib/logging.sh"
 # shellcheck source=scripts/lib/manifest.sh
 source "${SCRIPT_DIR}/lib/manifest.sh"
+# shellcheck source=scripts/lib/mounts.sh
+source "${SCRIPT_DIR}/lib/mounts.sh"
 
 function cleanup() {
+  cleanup_stage_pacman_config || true
+
+  if [ -n "${TARGET_ROOT:-}" ] && [ -d "${TARGET_ROOT:-}" ]; then
+    unmount_mount_tree "${TARGET_ROOT}" || true
+  fi
+
   if [ -n "${ROOTFS_STAGE_DIR:-}" ] && [ -d "${ROOTFS_STAGE_DIR:-}" ]; then
     rm -rf "${ROOTFS_STAGE_DIR}"
   fi
@@ -37,6 +45,7 @@ function bootstrap_rootfs() {
     sudo
     btrfs-progs
     dosfstools
+    dhclient
     efibootmgr
     curl
     ca-certificates
@@ -72,9 +81,28 @@ EOF
   install -Dm0644 "${ROOTFS_STAGE_DIR}/mirrorlist" "${TARGET_ROOT}/etc/pacman.d/mirrorlist"
 }
 
+function prepare_stage_pacman_config() {
+  TARGET_PACMAN_CONFIG="/root/pacman-stage-build.conf"
+  export TARGET_PACMAN_CONFIG
+
+  install -Dm0644 "${TARGET_ROOT}/etc/pacman.conf" "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+  sed -i '/^[[:space:]]*CheckSpace[[:space:]]*$/d' "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+}
+
+function cleanup_stage_pacman_config() {
+  if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
+    rm -f "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+    unset TARGET_PACMAN_CONFIG
+  fi
+}
+
 function pack_rootfs_artifact() {
-  rm -f "${ROOTFS_ARTIFACT_PATH}" "${ROOTFS_MANIFEST_PATH}"
-  tar --zstd --acls --xattrs --numeric-owner -C "${TARGET_ROOT}" -cpf "${ROOTFS_ARTIFACT_PATH}" .
+  local tmp_artifact="${ROOTFS_ARTIFACT_PATH}.tmp.$$"
+
+  rm -f "${ROOTFS_ARTIFACT_PATH}" "${ROOTFS_MANIFEST_PATH}" "${tmp_artifact}"
+  unmount_mount_tree "${TARGET_ROOT}"
+  tar --zstd --acls --xattrs --numeric-owner -C "${TARGET_ROOT}" -cpf "${tmp_artifact}" .
+  mv "${tmp_artifact}" "${ROOTFS_ARTIFACT_PATH}"
   chown_to_invoking_user "${ROOTFS_ARTIFACT_PATH}" 2>/dev/null || true
 }
 
@@ -100,8 +128,12 @@ function main() {
   log_step "Stage 1: applying common base customization"
   configure_base_rootfs
 
+  log_step "Stage 1: preparing package manager for rootfs-only customization"
+  prepare_stage_pacman_config
+
   log_step "Stage 1: configuring BlackArch and cloud-init"
   configure_blackarch_rootfs
+  cleanup_stage_pacman_config
 
   log_step "Stage 1: packing reusable rootfs artifact"
   pack_rootfs_artifact

@@ -84,8 +84,11 @@ function main() {
   rm -rf "${BUILD_WORKDIR}"
   mkdir -p "${BUILD_WORKDIR}"
 
+  log_step "Running Stage 1: build common rootfs"
   bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_VERSION}"
+  log_step "Running Stage 2: assemble profile-specific image"
   bash "${PROJECT_ROOT}/scripts/assemble-image.sh" "${BUILD_VERSION}"
+  log_step "Running Stage 3: export final artifact"
   bash "${PROJECT_ROOT}/scripts/export-image.sh" "${BUILD_VERSION}"
 
   log_step "Build completed"
