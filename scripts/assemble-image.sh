@@ -37,7 +37,7 @@ function restore_rootfs_artifact() {
     return 1
   fi
 
-  tar --zstd --acls --xattrs --same-owner -C "${TARGET_ROOT}" -xpf "${ROOTFS_ARTIFACT_PATH}"
+  run_logged tar --zstd --acls --xattrs --same-owner -C "${TARGET_ROOT}" -xpf "${ROOTFS_ARTIFACT_PATH}"
 }
 
 function main() {
@@ -49,13 +49,13 @@ function main() {
   readonly ASSEMBLY_STAGE_DIR
   TARGET_ROOT="${ASSEMBLY_STAGE_DIR}/mount"
   export TARGET_ROOT
-  mkdir -p "${TARGET_ROOT}"
+  run_logged mkdir -p "${TARGET_ROOT}"
 
   # shellcheck source=images/base.sh
   source "${PROJECT_ROOT}/images/base.sh"
 
   log_step "Stage 2: creating raw staging image"
-  rm -f "${STAGING_IMAGE_PATH}"
+  run_logged rm -f "${STAGING_IMAGE_PATH}"
   create_partitioned_raw_image "${STAGING_IMAGE_PATH}" "${RESOLVED_FINAL_DISK_SIZE}"
   mount_new_raw_image "${STAGING_IMAGE_PATH}" "${TARGET_ROOT}"
 

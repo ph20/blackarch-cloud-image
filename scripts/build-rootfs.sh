@@ -57,7 +57,7 @@ function bootstrap_rootfs() {
     gptfdisk
   )
 
-  mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
+  run_logged mkdir -p "${pacman_dbpath}" "${pacman_cachedir}"
 
   cat <<EOF >"${ROOTFS_STAGE_DIR}/pacman.conf"
 [options]
@@ -76,22 +76,22 @@ EOF
 
   printf 'Server = %s\n' "${ARCH_MIRROR}" >"${ROOTFS_STAGE_DIR}/mirrorlist"
 
-  pacstrap -C "${ROOTFS_STAGE_DIR}/pacman.conf" -M "${TARGET_ROOT}" "${bootstrap_packages[@]}"
-  gpgconf --homedir "${TARGET_ROOT}/etc/pacman.d/gnupg" --kill gpg-agent || true
-  install -Dm0644 "${ROOTFS_STAGE_DIR}/mirrorlist" "${TARGET_ROOT}/etc/pacman.d/mirrorlist"
+  run_logged pacstrap -C "${ROOTFS_STAGE_DIR}/pacman.conf" -M "${TARGET_ROOT}" "${bootstrap_packages[@]}"
+  run_logged gpgconf --homedir "${TARGET_ROOT}/etc/pacman.d/gnupg" --kill all || true
+  run_logged install -Dm0644 "${ROOTFS_STAGE_DIR}/mirrorlist" "${TARGET_ROOT}/etc/pacman.d/mirrorlist"
 }
 
 function prepare_stage_pacman_config() {
   TARGET_PACMAN_CONFIG="/root/pacman-stage-build.conf"
   export TARGET_PACMAN_CONFIG
 
-  install -Dm0644 "${TARGET_ROOT}/etc/pacman.conf" "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
-  sed -i '/^[[:space:]]*CheckSpace[[:space:]]*$/d' "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+  run_logged install -Dm0644 "${TARGET_ROOT}/etc/pacman.conf" "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+  run_logged sed -i '/^[[:space:]]*CheckSpace[[:space:]]*$/d' "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
 }
 
 function cleanup_stage_pacman_config() {
   if [ -n "${TARGET_PACMAN_CONFIG:-}" ]; then
-    rm -f "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
+    run_logged rm -f "${TARGET_ROOT}${TARGET_PACMAN_CONFIG}"
     unset TARGET_PACMAN_CONFIG
   fi
 }
@@ -99,10 +99,11 @@ function cleanup_stage_pacman_config() {
 function pack_rootfs_artifact() {
   local tmp_artifact="${ROOTFS_ARTIFACT_PATH}.tmp.$$"
 
-  rm -f "${ROOTFS_ARTIFACT_PATH}" "${ROOTFS_MANIFEST_PATH}" "${tmp_artifact}"
+  run_logged rm -f "${ROOTFS_ARTIFACT_PATH}" "${ROOTFS_MANIFEST_PATH}" "${tmp_artifact}"
   unmount_mount_tree "${TARGET_ROOT}"
-  tar --zstd --acls --xattrs --numeric-owner -C "${TARGET_ROOT}" -cpf "${tmp_artifact}" .
-  mv "${tmp_artifact}" "${ROOTFS_ARTIFACT_PATH}"
+  run_logged gpgconf --homedir "${TARGET_ROOT}/etc/pacman.d/gnupg" --kill all || true
+  run_logged tar --zstd --acls --xattrs --numeric-owner -C "${TARGET_ROOT}" -cpf "${tmp_artifact}" .
+  run_logged mv "${tmp_artifact}" "${ROOTFS_ARTIFACT_PATH}"
   chown_to_invoking_user "${ROOTFS_ARTIFACT_PATH}" 2>/dev/null || true
 }
 
@@ -115,7 +116,7 @@ function main() {
   readonly ROOTFS_STAGE_DIR
   TARGET_ROOT="${ROOTFS_STAGE_DIR}/tree"
   readonly TARGET_ROOT
-  mkdir -p "${TARGET_ROOT}"
+  run_logged mkdir -p "${TARGET_ROOT}"
 
   # shellcheck source=images/base.sh
   source "${PROJECT_ROOT}/images/base.sh"

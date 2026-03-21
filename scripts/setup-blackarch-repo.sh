@@ -17,17 +17,41 @@ readonly PACMAN_KEYRING_DIR="/usr/share/pacman/keyrings"
 WORKDIR="$(mktemp -d)"
 readonly WORKDIR
 
+function format_command_line() {
+  local formatted=''
+  local argument=''
+
+  for argument in "${@}"; do
+    if [ -n "${formatted}" ]; then
+      formatted+=" "
+    fi
+
+    formatted+="$(printf '%q' "${argument}")"
+  done
+
+  printf '%s\n' "${formatted}"
+}
+
+function log_command() {
+  printf '+ %s\n' "$(format_command_line "${@}")" >&2
+}
+
+function run_logged() {
+  log_command "${@}"
+  "${@}"
+}
+
 function cleanup() {
   rm -rf "${WORKDIR}"
 }
 trap cleanup EXIT
 
 function pacman_refresh() {
-  pacman --config "${PACMAN_COMMAND_CONF}" -Syy --noconfirm --noprogressbar --color never
+  run_logged pacman --config "${PACMAN_COMMAND_CONF}" -Syy --noconfirm --noprogressbar --color never
 }
 
 function pacman_sync() {
-  pacman --config "${PACMAN_COMMAND_CONF}" -S --noconfirm --needed --noprogressbar --color never "${@}"
+  run_logged pacman --config "${PACMAN_COMMAND_CONF}" -S --noconfirm --needed --noprogressbar --color never "${@}"
 }
 
 function fail() {
@@ -42,6 +66,16 @@ function download_https() {
 
   tmp_path="$(mktemp "${WORKDIR}/download.XXXXXX")"
 
+  log_command curl \
+    --fail \
+    --show-error \
+    --silent \
+    --location \
+    --proto '=https' \
+    --tlsv1.2 \
+    "${url}" \
+    --output "${tmp_path}"
+
   curl \
     --fail \
     --show-error \
@@ -52,7 +86,7 @@ function download_https() {
     "${url}" \
     --output "${tmp_path}"
 
-  mv "${tmp_path}" "${destination}"
+  run_logged mv "${tmp_path}" "${destination}"
 }
 
 function verify_sha256() {
@@ -92,7 +126,7 @@ function run_legacy_strap() {
   download_https "${strap_url}" "${strap_path}"
   verify_sha256 "${strap_path}" "${BLACKARCH_STRAP_SHA256}" "BlackArch legacy strap"
 
-  bash "${strap_path}"
+  run_logged bash "${strap_path}"
 }
 
 function require_root() {
@@ -110,31 +144,31 @@ function install_keyring() {
   keyring_sha256="$(resolve_keyring_sha256)"
   download_https "${KEYRING_URL}" "${keyring_archive_path}"
   verify_sha256 "${keyring_archive_path}" "${keyring_sha256}" "${KEYRING_ARCHIVE}"
-  tar xzf "${keyring_archive_path}" -C "${WORKDIR}"
+  run_logged tar xzf "${keyring_archive_path}" -C "${WORKDIR}"
 
-  install -Dm0644 \
+  run_logged install -Dm0644 \
     "${extracted_dir}/blackarch.gpg" \
     "${PACMAN_KEYRING_DIR}/blackarch.gpg"
-  install -Dm0644 \
+  run_logged install -Dm0644 \
     "${extracted_dir}/blackarch-trusted" \
     "${PACMAN_KEYRING_DIR}/blackarch-trusted"
-  install -Dm0644 \
+  run_logged install -Dm0644 \
     "${extracted_dir}/blackarch-revoked" \
     "${PACMAN_KEYRING_DIR}/blackarch-revoked"
 
   if [ ! -d /etc/pacman.d/gnupg ] || [ -z "$(find /etc/pacman.d/gnupg -mindepth 1 -maxdepth 1 2>/dev/null)" ]; then
-    pacman-key --init
-    pacman-key --populate archlinux
+    run_logged pacman-key --init
+    run_logged pacman-key --populate archlinux
   fi
 
-  pacman-key --populate blackarch
+  run_logged pacman-key --populate blackarch
 }
 
 function install_mirrorlist() {
   local mirrorlist_path_tmp="${WORKDIR}/blackarch-mirrorlist"
 
   download_https "${MIRRORLIST_URL}" "${mirrorlist_path_tmp}"
-  install -Dm0644 "${mirrorlist_path_tmp}" "${MIRRORLIST_PATH}"
+  run_logged install -Dm0644 "${mirrorlist_path_tmp}" "${MIRRORLIST_PATH}"
 }
 
 function ensure_blackarch_repo_in_config() {

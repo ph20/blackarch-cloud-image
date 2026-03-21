@@ -8,6 +8,7 @@ function chroot_pacman_sync() {
     pacman_command+=(--config "${TARGET_PACMAN_CONFIG}")
   fi
 
+  log_command arch-chroot "${TARGET_ROOT}" "${pacman_command[@]}" "${@}"
   arch-chroot "${TARGET_ROOT}" "${pacman_command[@]}" "${@}"
 }
 
@@ -70,7 +71,7 @@ function configure_blackarch_rootfs() {
   local -a setup_env=(/usr/bin/env)
   local default_user_sudo=''
 
-  install -Dm0755 \
+  run_logged install -Dm0755 \
     "${PROJECT_ROOT}/scripts/setup-blackarch-repo.sh" \
     "${TARGET_ROOT}/root/setup-blackarch-repo.sh"
 
@@ -95,8 +96,9 @@ function configure_blackarch_rootfs() {
   fi
 
   setup_env+=(/root/setup-blackarch-repo.sh)
+  log_command arch-chroot "${TARGET_ROOT}" "${setup_env[@]}"
   arch-chroot "${TARGET_ROOT}" "${setup_env[@]}"
-  rm -f "${TARGET_ROOT}/root/setup-blackarch-repo.sh"
+  run_logged rm -f "${TARGET_ROOT}/root/setup-blackarch-repo.sh"
 
   install_blackarch_profile
 
@@ -123,6 +125,7 @@ system_info:
     shell: /bin/bash
 EOF
 
+  log_command arch-chroot "${TARGET_ROOT}" /usr/bin/passwd -l root
   arch-chroot "${TARGET_ROOT}" /usr/bin/passwd -l root || true
-  arch-chroot "${TARGET_ROOT}" /usr/bin/systemctl enable "${cloud_init_services[@]}"
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/systemctl --quiet enable "${cloud_init_services[@]}"
 }

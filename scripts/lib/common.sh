@@ -16,7 +16,7 @@ function chown_to_invoking_user() {
 }
 
 function ensure_directories() {
-  mkdir -p "${@}"
+  run_logged mkdir -p "${@}"
   chown_to_invoking_user "${@}" 2>/dev/null || true
 }
 
@@ -34,7 +34,7 @@ function prepare_stage_workdir() {
   fi
 
   stage_path="${BUILD_WORKDIR}/${stage_name}"
-  rm -rf "${stage_path}"
-  mkdir -p "${stage_path}"
+  run_logged rm -rf "${stage_path}"
+  run_logged mkdir -p "${stage_path}"
   printf '%s\n' "${stage_path}"
 }

@@ -17,16 +17,18 @@ source "${SCRIPT_DIR}/lib/logging.sh"
 source "${SCRIPT_DIR}/lib/manifest.sh"
 
 function export_qcow2() {
-  qemu-img convert -c -f raw -O qcow2 "${STAGING_IMAGE_PATH}" "${FINAL_IMAGE_PATH}"
+  run_logged qemu-img convert -c -f raw -O qcow2 "${STAGING_IMAGE_PATH}" "${FINAL_IMAGE_PATH}"
 }
 
 function export_raw_gz() {
+  log_command_line "$(format_command_line gzip -n -c "${STAGING_IMAGE_PATH}") > $(printf '%q' "${FINAL_IMAGE_PATH}")"
   gzip -n -c "${STAGING_IMAGE_PATH}" >"${FINAL_IMAGE_PATH}"
 }
 
 function write_checksum() {
   (
     cd "${IMAGE_OUTPUT_DIR}"
+    log_command_line "$(format_command_line sha256sum "$(basename "${FINAL_IMAGE_PATH}")") > $(printf '%q' "$(basename "${FINAL_IMAGE_CHECKSUM_PATH}")")"
     sha256sum "$(basename "${FINAL_IMAGE_PATH}")" >"$(basename "${FINAL_IMAGE_CHECKSUM_PATH}")"
   )
 }
@@ -41,7 +43,7 @@ function main() {
     exit 1
   fi
 
-  rm -f "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}" "${FINAL_IMAGE_MANIFEST_PATH}"
+  run_logged rm -f "${FINAL_IMAGE_PATH}" "${FINAL_IMAGE_CHECKSUM_PATH}" "${FINAL_IMAGE_MANIFEST_PATH}"
 
   log_step "Stage 3: exporting ${RESOLVED_IMAGE_PROFILE} artifact"
   case "${RESOLVED_IMAGE_FINAL_FORMAT}" in

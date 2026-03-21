@@ -2,14 +2,19 @@
 # shellcheck disable=SC2154
 
 function configure_base_rootfs() {
-  rm -f "${TARGET_ROOT}/etc/machine-id"
+  run_logged rm -f "${TARGET_ROOT}/etc/machine-id"
 
+  log_command arch-chroot "${TARGET_ROOT}" /usr/bin/systemd-firstboot \
+    --locale="${RESOLVED_IMAGE_LOCALE}" \
+    --timezone="${RESOLVED_IMAGE_TIMEZONE}" \
+    --hostname="${RESOLVED_IMAGE_HOSTNAME}" \
+    --keymap="${RESOLVED_IMAGE_KEYMAP}"
   arch-chroot "${TARGET_ROOT}" /usr/bin/systemd-firstboot \
     --locale="${RESOLVED_IMAGE_LOCALE}" \
     --timezone="${RESOLVED_IMAGE_TIMEZONE}" \
     --hostname="${RESOLVED_IMAGE_HOSTNAME}" \
     --keymap="${RESOLVED_IMAGE_KEYMAP}"
-  ln -sf /run/systemd/resolve/stub-resolv.conf "${TARGET_ROOT}/etc/resolv.conf"
+  run_logged ln -sf /run/systemd/resolve/stub-resolv.conf "${TARGET_ROOT}/etc/resolv.conf"
 
   cat <<EOF >"${TARGET_ROOT}/etc/systemd/system/pacman-init.service"
 [Unit]
@@ -33,42 +38,45 @@ Server = https://fastly.mirror.pkgbuild.com/$repo/os/$arch
 Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
 EOF
 
+  log_command arch-chroot "${TARGET_ROOT}" /bin/bash -e
   arch-chroot "${TARGET_ROOT}" /bin/bash -e <<'EOF'
 source /etc/profile
-systemctl enable sshd
-systemctl enable systemd-networkd
-systemctl enable systemd-resolved
-systemctl enable systemd-timesyncd
-systemctl enable systemd-time-wait-sync
-systemctl enable pacman-init.service
+systemctl --quiet enable sshd
+systemctl --quiet enable systemd-networkd
+systemctl --quiet enable systemd-resolved
+systemctl --quiet enable systemd-timesyncd
+systemctl --quiet enable systemd-time-wait-sync
+systemctl --quiet enable pacman-init.service
 EOF
 }
 
 function configure_base_image() {
-  rm -f "${TARGET_ROOT}/etc/machine-id"
+  run_logged rm -f "${TARGET_ROOT}/etc/machine-id"
 
   configure_image_swapfile
 
-  arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=i386-pc "${TARGET_LOOP_DEVICE}"
-  arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=x86_64-efi --efi-directory=/efi --removable
-  sed -i 's/^GRUB_TIMEOUT=.*$/GRUB_TIMEOUT=1/' "${TARGET_ROOT}/etc/default/grub"
-  sed -i 's/^GRUB_CMDLINE_LINUX=.*$/GRUB_CMDLINE_LINUX="net.ifnames=0"/' "${TARGET_ROOT}/etc/default/grub"
-  sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$(grub_linux_default_cmdline)\"/" "${TARGET_ROOT}/etc/default/grub"
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=i386-pc "${TARGET_LOOP_DEVICE}"
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/grub-install --target=x86_64-efi --efi-directory=/efi --removable
+  run_logged sed -i 's/^GRUB_TIMEOUT=.*$/GRUB_TIMEOUT=1/' "${TARGET_ROOT}/etc/default/grub"
+  run_logged sed -i 's/^GRUB_CMDLINE_LINUX=.*$/GRUB_CMDLINE_LINUX="net.ifnames=0"/' "${TARGET_ROOT}/etc/default/grub"
+  run_logged sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT=\"$(grub_linux_default_cmdline)\"/" "${TARGET_ROOT}/etc/default/grub"
   echo 'GRUB_TERMINAL="serial console"' >>"${TARGET_ROOT}/etc/default/grub"
   echo 'GRUB_SERIAL_COMMAND="serial --speed=115200"' >>"${TARGET_ROOT}/etc/default/grub"
-  arch-chroot "${TARGET_ROOT}" /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/grub-mkconfig -o /boot/grub/grub.cfg
 }
 
 function configure_image_swapfile() {
   case "${RESOLVED_IMAGE_ROOT_FS_TYPE}" in
     btrfs)
-      arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs subvolume create /swap
-      chattr +C "${TARGET_ROOT}/swap"
-      chmod 0700 "${TARGET_ROOT}/swap"
-      arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs filesystem mkswapfile --size "${RESOLVED_IMAGE_SWAP_SIZE}" --uuid clear /swap/swapfile
+      run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs subvolume create /swap
+      run_logged chattr +C "${TARGET_ROOT}/swap"
+      run_logged chmod 0700 "${TARGET_ROOT}/swap"
+      run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/btrfs filesystem mkswapfile --size "${RESOLVED_IMAGE_SWAP_SIZE}" --uuid clear /swap/swapfile
       echo "/swap/swapfile none swap defaults 0 0" >>"${TARGET_ROOT}/etc/fstab"
       ;;
     ext4)
+      # shellcheck disable=SC2016
+      log_command arch-chroot "${TARGET_ROOT}" /bin/bash -e -c 'fallocate -l "$1" /swapfile && chmod 0600 /swapfile && mkswap /swapfile' _ "${RESOLVED_IMAGE_SWAP_SIZE}"
       # shellcheck disable=SC2016
       arch-chroot "${TARGET_ROOT}" /bin/bash -e -c \
         'fallocate -l "$1" /swapfile && chmod 0600 /swapfile && mkswap /swapfile' \
@@ -98,6 +106,6 @@ function grub_linux_default_cmdline() {
 }
 
 function finalize_base_image() {
-  rm -rf "${TARGET_ROOT}/etc/pacman.d/gnupg/"
-  arch-chroot "${TARGET_ROOT}" /usr/bin/mkinitcpio -p linux -- -S autodetect
+  run_logged rm -rf "${TARGET_ROOT}/etc/pacman.d/gnupg/"
+  run_logged arch-chroot "${TARGET_ROOT}" /usr/bin/mkinitcpio -p linux -- -S autodetect
 }
