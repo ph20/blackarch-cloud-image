@@ -84,6 +84,20 @@ function validate_blackarch_profile_value() {
   esac
 }
 
+function validate_image_profile_value() {
+  local profile="${1:-generic-qemu}"
+
+  case "${profile}" in
+    generic-qemu | digitalocean)
+      return 0
+      ;;
+    *)
+      validation_fail "IMAGE_PROFILE must be one of: generic-qemu, digitalocean (got: ${profile})"
+      return 1
+      ;;
+  esac
+}
+
 function validate_blackarch_bootstrap_configuration() {
   local keyring_version="${BLACKARCH_KEYRING_VERSION:-${DEFAULT_BLACKARCH_KEYRING_VERSION}}"
 
@@ -167,6 +181,7 @@ function validate_build_configuration() {
   local requested_build_version="${1:-}"
 
   validate_build_version_value "${requested_build_version}" || return 1
+  validate_image_profile_value "${IMAGE_PROFILE:-generic-qemu}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1
   validate_size_value "DISK_SIZE" "${DISK_SIZE:-}" || return 1
   validate_blackarch_profile_value "${BLACKARCH_PROFILE:-core}" || return 1
