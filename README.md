@@ -318,6 +318,7 @@ Image customization settings:
 - `IMAGE_TIMEZONE`
 - `IMAGE_KEYMAP`
 - `IMAGE_DEFAULT_USER`
+  Default: `blackarch`.
 - `IMAGE_DEFAULT_USER_GECOS`
 - `IMAGE_PASSWORDLESS_SUDO`
 
@@ -475,9 +476,9 @@ DigitalOcean note:
 
 The images are prepared for `cloud-init` environments with these defaults:
 
-- root login is disabled
+- remote SSH `root` login is disabled
 - SSH password authentication is disabled
-- the default cloud user is `arch`
+- the default cloud user is `blackarch`
 - the default cloud user gets passwordless `sudo` unless overridden
 
 Manual boot/runtime validation is still your responsibility. This repository does not yet provide a `validate-image.sh`, QEMU smoke-boot stage, or provider-specific runtime checks.
