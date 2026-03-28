@@ -20,6 +20,16 @@ function export_qcow2() {
   run_logged qemu-img convert -c -f raw -O qcow2 "${STAGING_IMAGE_PATH}" "${FINAL_IMAGE_PATH}"
 }
 
+function export_vmdk() {
+  local vmdk_options="subformat=${RESOLVED_PROFILE_VMDK_SUBFORMAT:-monolithicSparse}"
+
+  if [ -n "${RESOLVED_PROFILE_VMDK_HWVERSION:-}" ]; then
+    vmdk_options="${vmdk_options},hwversion=${RESOLVED_PROFILE_VMDK_HWVERSION}"
+  fi
+
+  run_logged qemu-img convert -f raw -O vmdk -o "${vmdk_options}" "${STAGING_IMAGE_PATH}" "${FINAL_IMAGE_PATH}"
+}
+
 function export_raw_gz() {
   log_command_line "$(format_command_line gzip -n -c "${STAGING_IMAGE_PATH}") > $(printf '%q' "${FINAL_IMAGE_PATH}")"
   gzip -n -c "${STAGING_IMAGE_PATH}" >"${FINAL_IMAGE_PATH}"
@@ -49,6 +59,9 @@ function main() {
   case "${RESOLVED_IMAGE_FINAL_FORMAT}" in
     qcow2)
       export_qcow2
+      ;;
+    vmdk)
+      export_vmdk
       ;;
     raw.gz | img.gz)
       export_raw_gz

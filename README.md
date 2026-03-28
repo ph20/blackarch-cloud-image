@@ -14,6 +14,8 @@ Supported platform profiles:
   Exports `qcow2`, uses a Btrfs root filesystem, installs and enables `qemu-guest-agent`, defaults to `2G`, and keeps the current BIOS+UEFI boot path.
 - `digitalocean`
   Exports `img.gz`, uses an ext4 root filesystem, keeps a BIOS-only boot path, skips `qemu-guest-agent`, adds a DigitalOcean-specific `cloud-init` datasource override, cleans `cloud-init` state before packaging, and defaults to `4G`.
+- `vmware`
+  Exports `vmdk`, uses an ext4 root filesystem, keeps a BIOS+UEFI boot path, installs and enables `open-vm-tools` via `vmtoolsd.service`, disables `qemu-guest-agent`, creates a local `blackarch` user for local VMware Workstation Pro usage, keeps that account password-locked by default, and defaults to `4G`.
 
 Profile customization is localized through:
 
@@ -45,9 +47,11 @@ The assembled image includes:
 - kernel root arguments normalized to stable filesystem UUIDs instead of loop-device paths
 - serial console on `tty0` and `ttyS0`
 - `systemd-networkd`, `systemd-resolved`, `systemd-timesyncd`, and `sshd`
+- global SSH hardening with `PermitRootLogin no`, `PasswordAuthentication no`, and `KbdInteractiveAuthentication no`
 - profile-specific root filesystem behavior:
   `generic-qemu` uses Btrfs with Zstandard compression
   `digitalocean` uses ext4
+  `vmware` uses ext4
 - Stage 1 suppresses the early `mkinitcpio` package hook for the reusable rootfs tree
 - Stage 1 recreates the kernel preset and `/boot/vmlinuz-*` copy needed for Stage 2 finalization without generating initramfs yet
 - Stage 1 now renders the preset from the upstream `mkinitcpio` template, resolves all known placeholders, and fails early if any `%...%` token remains
@@ -66,7 +70,9 @@ The assembled image includes:
 │   ├── digitalocean.sh              # Optional DigitalOcean profile hook
 │   ├── digitalocean/
 │   │   └── rootfs-overlay/          # DigitalOcean rootfs overlay files
-│   └── generic-qemu.env             # Generic QEMU/KVM profile defaults
+│   ├── generic-qemu.env             # Generic QEMU/KVM profile defaults
+│   ├── vmware.env                   # VMware profile defaults
+│   └── vmware.sh                    # Optional VMware local-user hook
 ├── images/
 │   ├── base.sh                      # Common rootfs and bootable disk customization hooks
 │   └── blackarch-cloud.sh           # BlackArch repo/profile + cloud-init customization
@@ -118,7 +124,7 @@ Additional commands are required by profile behavior:
 - `btrfs`, `chattr`, and `mkfs.btrfs`
   Required for Btrfs-root profiles such as `generic-qemu`.
 - `mkfs.fat`
-  Required for profiles that keep an EFI system partition, such as `generic-qemu`.
+  Required for profiles that keep an EFI system partition, such as `generic-qemu` and `vmware`.
 
 Run the preflight checks before building:
 
@@ -139,6 +145,14 @@ DigitalOcean export:
 ```bash
 sudo IMAGE_PROFILE=digitalocean ./build.sh
 ```
+
+VMware export:
+
+```bash
+sudo IMAGE_PROFILE=vmware ./build.sh
+```
+
+The VMware profile does not require cloud metadata for local usage, but it also does not ship with a trivial baked-in password. Supply SSH keys or a password hash explicitly at build time if you want immediate access after first boot.
 
 Explicit build ID:
 
@@ -207,7 +221,7 @@ BUILD_ID=20260321.2 REUSE_ROOTFS=true make build-all
 Override the profile list used by `make build-all`:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" BUILD_ID=20260321.2 make build-all
+IMAGE_PROFILES="generic-qemu digitalocean vmware" BUILD_ID=20260321.2 make build-all
 ```
 
 ## Versioning
@@ -275,7 +289,7 @@ Core staged-build settings:
 - `VERSION`
   Top-level repository file containing the canonical SemVer `release_version`.
 - `IMAGE_PROFILE`
-  `generic-qemu` or `digitalocean`. Default: `generic-qemu`.
+  `generic-qemu`, `digitalocean`, or `vmware`. Default: `generic-qemu`.
 - `BUILD_ID`
   Optional explicit `YYYYMMDD.N` build identity. If unset, the builder auto-selects the next daily build number.
 - `BUILD_VERSION`
@@ -283,7 +297,7 @@ Core staged-build settings:
 - `REUSE_ROOTFS`
   `true` or `false`. Default: `false`. When `true`, `build.sh` reuses an existing compatible rootfs tarball for the selected `release_version` and `build_id` instead of rebuilding Stage 1.
 - `IMAGE_PROFILES`
-  Space-separated profile list used by `make build-all`. Default: `generic-qemu digitalocean`.
+  Space-separated profile list used by `make build-all`. Default: all readable `profiles/*.env` entries in sorted order.
 - `DISK_SIZE`
   Final raw disk size used for Stage 2 assembly.
 - `DEFAULT_DISK_SIZE`
@@ -291,6 +305,7 @@ Core staged-build settings:
   If neither is set, the profile default is used:
   `generic-qemu` => `2G`
   `digitalocean` => `4G`
+  `vmware` => `4G`
 
 BlackArch settings:
 
@@ -311,7 +326,7 @@ Image customization settings:
 
 - `IMAGE_ENABLE_QEMU_GUEST_AGENT`
   Optional override. When unset, the selected profile decides the default.
-  `generic-qemu` resolves to `true`; `digitalocean` resolves to `false`.
+  `generic-qemu` resolves to `true`; `digitalocean` and `vmware` resolve to `false`.
 - `IMAGE_HOSTNAME`
 - `IMAGE_SWAP_SIZE`
 - `IMAGE_LOCALE`
@@ -320,6 +335,15 @@ Image customization settings:
 - `IMAGE_DEFAULT_USER`
 - `IMAGE_DEFAULT_USER_GECOS`
 - `IMAGE_PASSWORDLESS_SUDO`
+
+VMware-specific settings:
+
+- `PROFILE_VMWARE_LOCAL_USER`
+  VMware-only local user created during Stage 2. Default: `blackarch`.
+- `PROFILE_VMWARE_LOCAL_PASSWORD_HASH`
+  Optional `/etc/shadow`-compatible password hash applied to the VMware local user for local console login. Empty by default. SSH password login stays disabled.
+- `PROFILE_VMWARE_AUTHORIZED_KEYS_FILE`
+  Optional file copied to the VMware local user's `~/.ssh/authorized_keys`. Supports absolute paths and repo-relative paths. Empty by default.
 
 ## Profile Customization Model
 
@@ -335,6 +359,16 @@ Supported profile variables:
 - `PROFILE_ID`
 - `PROFILE_NAME_SUFFIX`
 - `PROFILE_FINAL_FORMAT`
+- `PROFILE_VMDK_SUBFORMAT`
+  Optional `qemu-img` VMDK subformat used when `PROFILE_FINAL_FORMAT=vmdk`
+- `PROFILE_VMDK_HWVERSION`
+  Optional VMDK hardware version appended to the export options when non-empty
+- `PROFILE_VMWARE_LOCAL_USER`
+  VMware-only local user name. Defaults to `blackarch`.
+- `PROFILE_VMWARE_LOCAL_PASSWORD_HASH`
+  VMware-only optional password hash for the local user
+- `PROFILE_VMWARE_AUTHORIZED_KEYS_FILE`
+  VMware-only optional `authorized_keys` source file
 - `PROFILE_ROOT_FS_TYPE`
 - `PROFILE_DEFAULT_DISK_SIZE`
 - `PROFILE_BOOT_MODE`
@@ -361,6 +395,8 @@ Minimal example for a new profile:
 PROFILE_ID="example"
 PROFILE_NAME_SUFFIX="example"
 PROFILE_FINAL_FORMAT="qcow2"
+PROFILE_VMDK_SUBFORMAT=""
+PROFILE_VMDK_HWVERSION=""
 PROFILE_ROOT_FS_TYPE="ext4"
 PROFILE_DEFAULT_DISK_SIZE="4G"
 PROFILE_BOOT_MODE="bios"
@@ -400,6 +436,9 @@ Successful builds write staged artifacts under `output/`:
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz`
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz.SHA256`
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.manifest`
+- `output/images/BlackArch-Linux-x86_64-vmware-v<release_version>+<build_id>.vmdk`
+- `output/images/BlackArch-Linux-x86_64-vmware-v<release_version>+<build_id>.vmdk.SHA256`
+- `output/images/BlackArch-Linux-x86_64-vmware-v<release_version>+<build_id>.manifest`
 - `output/images/BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.build.log`
 
 The manifest files are simple `key=value` records.
@@ -471,14 +510,24 @@ DigitalOcean note:
 - the profile cleans `cloud-init` state from its Stage 2 hook before export
 - runtime platform validation is still not implemented, so DigitalOcean-specific boot/import verification is still manual
 
+VMware note:
+
+- the profile is suitable for local VMware Workstation Pro usage without requiring cloud metadata
+- the profile creates a local `blackarch` user during Stage 2
+- that local user is password-locked by default
+- SSH access stays key-first because SSH password login and remote `root` login are disabled globally
+- optional build-time `PROFILE_VMWARE_LOCAL_PASSWORD_HASH` and `PROFILE_VMWARE_AUTHORIZED_KEYS_FILE` inputs exist for local/lab workflows
+
 ## First boot defaults
 
 The images are prepared for `cloud-init` environments with these defaults:
 
-- root login is disabled
+- remote SSH `root` login is disabled
 - SSH password authentication is disabled
 - the default cloud user is `arch`
 - the default cloud user gets passwordless `sudo` unless overridden
+- VMware builds also create a local `blackarch` user with a locked password by default
+- cloud-init remains optional for local VMware usage; VMware key injection or a build-time password hash can be used instead
 
 Manual boot/runtime validation is still your responsibility. This repository does not yet provide a `validate-image.sh`, QEMU smoke-boot stage, or provider-specific runtime checks.
 

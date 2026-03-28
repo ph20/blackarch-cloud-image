@@ -8,7 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
-readonly DEFAULT_IMAGE_PROFILES="generic-qemu digitalocean"
 
 # shellcheck source=scripts/lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
@@ -16,6 +15,27 @@ source "${SCRIPT_DIR}/lib/common.sh"
 source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=scripts/lib/logging.sh
 source "${SCRIPT_DIR}/lib/logging.sh"
+
+function default_image_profiles() {
+  local -a profile_paths=()
+  local profile_path=''
+
+  shopt -s nullglob
+  profile_paths=("${PROFILES_DIR}"/*.env)
+  shopt -u nullglob
+
+  if [ "${#profile_paths[@]}" -eq 0 ]; then
+    printf '\n'
+    return 0
+  fi
+
+  for profile_path in "${profile_paths[@]}"; do
+    basename "${profile_path}" .env
+  done | LC_ALL=C sort | paste -sd ' ' -
+}
+
+DEFAULT_IMAGE_PROFILES="$(default_image_profiles)"
+readonly DEFAULT_IMAGE_PROFILES
 
 function requested_image_profiles() {
   printf '%s\n' "${IMAGE_PROFILES:-${DEFAULT_IMAGE_PROFILES}}"

@@ -139,17 +139,30 @@ function validate_blackarch_profile_value() {
 }
 
 function validate_image_profile_value() {
+  local profiles_dir=''
   local profile="${1:-generic-qemu}"
+  local profile_path=''
+  local supported_profiles=''
 
-  case "${profile}" in
-    generic-qemu | digitalocean)
-      return 0
-      ;;
-    *)
-      validation_fail "IMAGE_PROFILE must be one of: generic-qemu, digitalocean (got: ${profile})"
-      return 1
-      ;;
-  esac
+  profiles_dir="${PROFILES_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/profiles}"
+  profile_path="${profiles_dir}/${profile}.env"
+
+  if [ -r "${profile_path}" ]; then
+    return 0
+  fi
+
+  supported_profiles="$(
+    if [ -d "${profiles_dir}" ]; then
+      find "${profiles_dir}" -maxdepth 1 -type f -name '*.env' -printf '%f\n' 2>/dev/null \
+        | sed 's/\.env$//' \
+        | LC_ALL=C sort \
+        | paste -sd ',' - \
+        | sed 's/,/, /g'
+    fi
+  )"
+  supported_profiles="${supported_profiles:-none found}"
+
+  validation_fail "IMAGE_PROFILE must match a readable profile file under ${profiles_dir} (supported: ${supported_profiles}; got: ${profile})"
 }
 
 function validate_root_fs_type_value() {
@@ -170,11 +183,11 @@ function validate_final_format_value() {
   local final_format="${1}"
 
   case "${final_format}" in
-    qcow2 | raw.gz | img.gz)
+    qcow2 | raw.gz | img.gz | vmdk)
       return 0
       ;;
     *)
-      validation_fail "profile final image format must be one of: qcow2, raw.gz, img.gz (got: ${final_format})"
+      validation_fail "profile final image format must be one of: qcow2, raw.gz, img.gz, vmdk (got: ${final_format})"
       return 1
       ;;
   esac
@@ -192,6 +205,37 @@ function validate_boot_mode_value() {
       return 1
       ;;
   esac
+}
+
+function validate_unix_user_name_value() {
+  local env_name="${1}"
+  local user_name="${2:-}"
+
+  if [ -z "${user_name}" ]; then
+    validation_fail "${env_name} must not be empty"
+    return 1
+  fi
+
+  if [[ "${user_name}" =~ ^[a-z_][a-z0-9_-]{0,30}$ ]]; then
+    return 0
+  fi
+
+  validation_fail "${env_name} must be a lowercase Unix user name such as blackarch (got: ${user_name})"
+}
+
+function validate_shadow_password_hash_value() {
+  local env_name="${1}"
+  local password_hash="${2:-}"
+
+  if [ -z "${password_hash}" ]; then
+    return 0
+  fi
+
+  if [[ "${password_hash}" = \$* ]] && ! [[ "${password_hash}" =~ [[:space:]:] ]]; then
+    return 0
+  fi
+
+  validation_fail "${env_name} must be an /etc/shadow-compatible password hash starting with '$' and must not contain whitespace or ':'"
 }
 
 function validate_blackarch_bootstrap_configuration() {

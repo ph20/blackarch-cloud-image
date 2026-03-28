@@ -168,6 +168,21 @@ function resolve_profile_path() {
   printf '%s\n' "${PROFILES_DIR}/${requested_path}"
 }
 
+function resolve_project_path() {
+  local requested_path="${1:-}"
+
+  if [ -z "${requested_path}" ]; then
+    return 0
+  fi
+
+  if [[ "${requested_path}" = /* ]]; then
+    printf '%s\n' "${requested_path}"
+    return 0
+  fi
+
+  printf '%s\n' "${PROJECT_ROOT}/${requested_path}"
+}
+
 function word_list_contains() {
   local word_list="${1:-}"
   local needle="${2}"
@@ -221,6 +236,9 @@ function remove_word_from_list() {
 }
 
 function load_image_profile() {
+  local env_profile_vmware_local_user="${PROFILE_VMWARE_LOCAL_USER:-}"
+  local env_profile_vmware_local_password_hash="${PROFILE_VMWARE_LOCAL_PASSWORD_HASH:-}"
+  local env_profile_vmware_authorized_keys_file="${PROFILE_VMWARE_AUTHORIZED_KEYS_FILE:-}"
   local requested_profile="${IMAGE_PROFILE:-generic-qemu}"
   local profile_path="${PROFILES_DIR}/${requested_profile}.env"
   local resolved_overlay_dir=''
@@ -228,6 +246,9 @@ function load_image_profile() {
   local resolved_profile_pacman_packages=''
   local resolved_profile_enable_systemd_units=''
   local resolved_profile_disable_systemd_units=''
+  local resolved_profile_vmdk_subformat=''
+  local resolved_profile_vmdk_hwversion=''
+  local resolved_profile_vmware_authorized_keys_file=''
 
   validate_image_profile_value "${requested_profile}" || return 1
 
@@ -236,7 +257,7 @@ function load_image_profile() {
     return 1
   fi
 
-  unset PROFILE_ID PROFILE_NAME_SUFFIX PROFILE_FINAL_FORMAT PROFILE_ROOT_FS_TYPE PROFILE_DEFAULT_DISK_SIZE PROFILE_BOOT_MODE PROFILE_EFI_PARTITION_SIZE PROFILE_PACMAN_PACKAGES PROFILE_ENABLE_SYSTEMD_UNITS PROFILE_DISABLE_SYSTEMD_UNITS PROFILE_ROOTFS_OVERLAY_DIR PROFILE_HOOK_SCRIPT PROFILE_ENABLE_QEMU_GUEST_AGENT
+  unset PROFILE_ID PROFILE_NAME_SUFFIX PROFILE_FINAL_FORMAT PROFILE_ROOT_FS_TYPE PROFILE_DEFAULT_DISK_SIZE PROFILE_BOOT_MODE PROFILE_EFI_PARTITION_SIZE PROFILE_PACMAN_PACKAGES PROFILE_ENABLE_SYSTEMD_UNITS PROFILE_DISABLE_SYSTEMD_UNITS PROFILE_ROOTFS_OVERLAY_DIR PROFILE_HOOK_SCRIPT PROFILE_ENABLE_QEMU_GUEST_AGENT PROFILE_VMDK_SUBFORMAT PROFILE_VMDK_HWVERSION PROFILE_VMWARE_LOCAL_USER PROFILE_VMWARE_LOCAL_PASSWORD_HASH PROFILE_VMWARE_AUTHORIZED_KEYS_FILE
   # shellcheck disable=SC1090
   source "${profile_path}"
 
@@ -252,11 +273,37 @@ function load_image_profile() {
   PROFILE_DISABLE_SYSTEMD_UNITS="${PROFILE_DISABLE_SYSTEMD_UNITS:-}"
   PROFILE_ROOTFS_OVERLAY_DIR="${PROFILE_ROOTFS_OVERLAY_DIR:-}"
   PROFILE_HOOK_SCRIPT="${PROFILE_HOOK_SCRIPT:-}"
+  PROFILE_VMDK_SUBFORMAT="${PROFILE_VMDK_SUBFORMAT:-}"
+  PROFILE_VMDK_HWVERSION="${PROFILE_VMDK_HWVERSION:-}"
+
+  if [ "${PROFILE_ID}" = "vmware" ]; then
+    PROFILE_VMWARE_LOCAL_USER="${env_profile_vmware_local_user:-${PROFILE_VMWARE_LOCAL_USER:-blackarch}}"
+    PROFILE_VMWARE_LOCAL_PASSWORD_HASH="${env_profile_vmware_local_password_hash:-${PROFILE_VMWARE_LOCAL_PASSWORD_HASH:-}}"
+    PROFILE_VMWARE_AUTHORIZED_KEYS_FILE="${env_profile_vmware_authorized_keys_file:-${PROFILE_VMWARE_AUTHORIZED_KEYS_FILE:-}}"
+  else
+    PROFILE_VMWARE_LOCAL_USER=''
+    PROFILE_VMWARE_LOCAL_PASSWORD_HASH=''
+    PROFILE_VMWARE_AUTHORIZED_KEYS_FILE=''
+  fi
 
   validate_final_format_value "${PROFILE_FINAL_FORMAT}" || return 1
   validate_root_fs_type_value "${PROFILE_ROOT_FS_TYPE}" || return 1
   validate_size_value "PROFILE_DEFAULT_DISK_SIZE" "${PROFILE_DEFAULT_DISK_SIZE}" || return 1
   validate_boot_mode_value "${PROFILE_BOOT_MODE}" || return 1
+
+  if [ "${PROFILE_ID}" = "vmware" ]; then
+    validate_unix_user_name_value "PROFILE_VMWARE_LOCAL_USER" "${PROFILE_VMWARE_LOCAL_USER}" || return 1
+    validate_shadow_password_hash_value "PROFILE_VMWARE_LOCAL_PASSWORD_HASH" "${PROFILE_VMWARE_LOCAL_PASSWORD_HASH}" || return 1
+
+    if [ -n "${PROFILE_VMWARE_AUTHORIZED_KEYS_FILE}" ]; then
+      resolved_profile_vmware_authorized_keys_file="$(resolve_project_path "${PROFILE_VMWARE_AUTHORIZED_KEYS_FILE}")"
+
+      if [ ! -r "${resolved_profile_vmware_authorized_keys_file}" ]; then
+        printf 'Missing VMware authorized keys file: %s\n' "${resolved_profile_vmware_authorized_keys_file}" >&2
+        return 1
+      fi
+    fi
+  fi
 
   case "${PROFILE_BOOT_MODE}" in
     bios)
@@ -296,6 +343,8 @@ function load_image_profile() {
   resolved_profile_pacman_packages="${PROFILE_PACMAN_PACKAGES}"
   resolved_profile_enable_systemd_units="${PROFILE_ENABLE_SYSTEMD_UNITS}"
   resolved_profile_disable_systemd_units="${PROFILE_DISABLE_SYSTEMD_UNITS}"
+  resolved_profile_vmdk_subformat="${PROFILE_VMDK_SUBFORMAT}"
+  resolved_profile_vmdk_hwversion="${PROFILE_VMDK_HWVERSION}"
 
   if [ -n "${PROFILE_ENABLE_QEMU_GUEST_AGENT:-}" ] && [ -z "${IMAGE_ENABLE_QEMU_GUEST_AGENT:-}" ]; then
     IMAGE_ENABLE_QEMU_GUEST_AGENT="${PROFILE_ENABLE_QEMU_GUEST_AGENT}"
@@ -328,6 +377,11 @@ function load_image_profile() {
   RESOLVED_PROFILE_DISABLE_SYSTEMD_UNITS="${resolved_profile_disable_systemd_units}"
   RESOLVED_PROFILE_ROOTFS_OVERLAY_DIR="${resolved_overlay_dir}"
   RESOLVED_PROFILE_HOOK_SCRIPT="${resolved_hook_script}"
+  RESOLVED_PROFILE_VMDK_SUBFORMAT="${resolved_profile_vmdk_subformat}"
+  RESOLVED_PROFILE_VMDK_HWVERSION="${resolved_profile_vmdk_hwversion}"
+  RESOLVED_PROFILE_VMWARE_LOCAL_USER="${PROFILE_VMWARE_LOCAL_USER}"
+  RESOLVED_PROFILE_VMWARE_LOCAL_PASSWORD_HASH="${PROFILE_VMWARE_LOCAL_PASSWORD_HASH}"
+  RESOLVED_PROFILE_VMWARE_AUTHORIZED_KEYS_FILE="${resolved_profile_vmware_authorized_keys_file}"
 
   if word_list_contains "${RESOLVED_PROFILE_PACMAN_PACKAGES}" "qemu-guest-agent" \
     || word_list_contains "${RESOLVED_PROFILE_ENABLE_SYSTEMD_UNITS}" "qemu-guest-agent.service"; then
@@ -349,6 +403,11 @@ function load_image_profile() {
   export RESOLVED_PROFILE_DISABLE_SYSTEMD_UNITS
   export RESOLVED_PROFILE_ROOTFS_OVERLAY_DIR
   export RESOLVED_PROFILE_HOOK_SCRIPT
+  export RESOLVED_PROFILE_VMDK_SUBFORMAT
+  export RESOLVED_PROFILE_VMDK_HWVERSION
+  export RESOLVED_PROFILE_VMWARE_LOCAL_USER
+  export RESOLVED_PROFILE_VMWARE_LOCAL_PASSWORD_HASH
+  export RESOLVED_PROFILE_VMWARE_AUTHORIZED_KEYS_FILE
   export RESOLVED_IMAGE_NAME_PREFIX
 }
 
@@ -399,6 +458,11 @@ function resolve_build_context() {
   export RESOLVED_PROFILE_DISABLE_SYSTEMD_UNITS
   export RESOLVED_PROFILE_ROOTFS_OVERLAY_DIR
   export RESOLVED_PROFILE_HOOK_SCRIPT
+  export RESOLVED_PROFILE_VMDK_SUBFORMAT
+  export RESOLVED_PROFILE_VMDK_HWVERSION
+  export RESOLVED_PROFILE_VMWARE_LOCAL_USER
+  export RESOLVED_PROFILE_VMWARE_LOCAL_PASSWORD_HASH
+  export RESOLVED_PROFILE_VMWARE_AUTHORIZED_KEYS_FILE
   export RESOLVED_IMAGE_HOSTNAME
   export RESOLVED_IMAGE_SWAP_SIZE
   export RESOLVED_IMAGE_LOCALE

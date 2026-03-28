@@ -38,6 +38,13 @@ Server = https://fastly.mirror.pkgbuild.com/$repo/os/$arch
 Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch
 EOF
 
+  run_logged install -d -m0755 "${TARGET_ROOT}/etc/ssh/sshd_config.d"
+  cat <<'EOF' >"${TARGET_ROOT}/etc/ssh/sshd_config.d/10-blackarch-cloud-hardening.conf"
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+
   log_command arch-chroot "${TARGET_ROOT}" /bin/bash -e
   arch-chroot "${TARGET_ROOT}" /bin/bash -e <<'EOF'
 source /etc/profile
