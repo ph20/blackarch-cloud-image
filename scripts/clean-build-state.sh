@@ -12,6 +12,12 @@ OUTPUT_ROOT="${PROJECT_ROOT}/output"
 readonly OUTPUT_ROOT
 TMP_ROOT="${PROJECT_ROOT}/tmp"
 readonly TMP_ROOT
+CLEANED_ANY=0
+
+function log_cleanup_action() {
+  CLEANED_ANY=1
+  printf '%s\n' "${1}"
+}
 
 function mount_targets_under_tmp() {
   findmnt -rn -o TARGET | awk -v root="${TMP_ROOT}" '
@@ -78,10 +84,11 @@ function unmount_tmp_mounts() {
       fi
 
       if umount "${target}" 2>/dev/null; then
+        log_cleanup_action "Unmounted tmp mount: ${target}"
         continue
       fi
 
-      printf 'Unmounting busy target with lazy unmount: %s\n' "${target}"
+      log_cleanup_action "Lazy-unmounting busy tmp mount: ${target}"
       umount --lazy "${target}"
     done < <(mount_targets_under_tmp)
 
@@ -96,6 +103,8 @@ function unmount_tmp_mounts() {
 
 function remove_tmp_tree() {
   local attempts=3
+
+  log_cleanup_action "Removing tmp build state: ${TMP_ROOT}"
 
   while [ "${attempts}" -gt 0 ]; do
     if rm -rf --one-file-system "${TMP_ROOT}" 2>/dev/null; then
@@ -119,16 +128,34 @@ function detach_tmp_loop_devices() {
     fi
 
     losetup -d "${loop_device}"
+    log_cleanup_action "Detached tmp loop device: ${loop_device}"
   done < <(loop_devices_under_tmp)
 }
 
 function remove_output_artifacts() {
+  local artifact_dir=''
+  local legacy_artifact=''
+
   if [ ! -d "${OUTPUT_ROOT}" ]; then
     return 0
   fi
 
-  rm -rf "${OUTPUT_ROOT}/rootfs" "${OUTPUT_ROOT}/images"
-  find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name 'BlackArch-Linux-x86_64-cloudimg-*' -delete
+  for artifact_dir in "${OUTPUT_ROOT}/rootfs" "${OUTPUT_ROOT}/images"; do
+    if [ -e "${artifact_dir}" ]; then
+      log_cleanup_action "Removing output artifacts: ${artifact_dir}"
+      rm -rf "${artifact_dir}"
+    fi
+  done
+
+  while IFS= read -r legacy_artifact; do
+    if [ -z "${legacy_artifact}" ]; then
+      continue
+    fi
+
+    log_cleanup_action "Removing legacy output artifact: ${legacy_artifact}"
+    rm -f "${legacy_artifact}"
+  done < <(find "${OUTPUT_ROOT}" -maxdepth 1 \( -type f -o -type l \) -name 'BlackArch-Linux-x86_64-cloudimg-*')
+
   rmdir "${OUTPUT_ROOT}" 2>/dev/null || true
 }
 
@@ -142,6 +169,10 @@ function main() {
   fi
 
   remove_output_artifacts
+
+  if [ "${CLEANED_ANY}" -eq 0 ]; then
+    printf '%s\n' 'Nothing to clean.'
+  fi
 }
 
 main
