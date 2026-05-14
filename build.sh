@@ -20,17 +20,32 @@ source "${PROJECT_ROOT}/scripts/lib/manifest.sh"
 function setup_logging() {
   ensure_directories "${ROOTFS_OUTPUT_DIR}" "${IMAGE_OUTPUT_DIR}" "${TMP_ROOT}"
 
-  BUILD_LOG="${BUILD_LOG_PATH}"
+  ROOTFS_BUILD_LOG="${ROOTFS_BUILD_LOG_PATH}"
+  IMAGE_BUILD_LOG="${IMAGE_BUILD_LOG_PATH}"
+  BUILD_LOG="${IMAGE_BUILD_LOG}"
+  export ROOTFS_BUILD_LOG
+  export IMAGE_BUILD_LOG
   export BUILD_LOG
-  : > "${BUILD_LOG}"
-  chown_to_invoking_user "${BUILD_LOG}" 2>/dev/null || true
+  : > "${IMAGE_BUILD_LOG}"
+  chown_to_invoking_user "${IMAGE_BUILD_LOG}" 2>/dev/null || true
 
   exec 3>&1
   STATUS_FD_READY=1
   export STATUS_FD_READY
-  exec >>"${BUILD_LOG}" 2>&1
+  switch_build_log "${IMAGE_BUILD_LOG}"
 
-  log_step "Writing build log to ${BUILD_LOG}"
+  log_step "Writing image build log to ${IMAGE_BUILD_LOG}"
+  write_build_context_log_lines
+  status_line "Rootfs build log: ${ROOTFS_BUILD_LOG}"
+}
+
+function switch_build_log() {
+  BUILD_LOG="${1}"
+  export BUILD_LOG
+  exec >>"${BUILD_LOG}" 2>&1
+}
+
+function write_build_context_log_lines() {
   status_line "Release version: ${RELEASE_VERSION}"
   status_line "Build ID: ${BUILD_ID}"
   status_line "Artifact version: ${ARTIFACT_VERSION}"
@@ -47,6 +62,17 @@ function setup_logging() {
     status_line "No explicit build ID was provided."
     status_line "Auto-selected build ID ${BUILD_ID}"
   fi
+}
+
+function start_rootfs_build_log() {
+  : > "${ROOTFS_BUILD_LOG}"
+  chown_to_invoking_user "${ROOTFS_BUILD_LOG}" 2>/dev/null || true
+  switch_build_log "${ROOTFS_BUILD_LOG}"
+
+  log_step "Writing rootfs build log to ${ROOTFS_BUILD_LOG}"
+  write_build_context_log_lines
+  status_line "Rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"
+  status_line "Rootfs manifest: ${ROOTFS_MANIFEST_PATH}"
 }
 
 function reuse_rootfs_requested() {
@@ -77,6 +103,7 @@ function can_reuse_rootfs_artifact() {
   export ROOTFS_REUSED
   status_line "Reusing existing rootfs artifact: ${ROOTFS_ARTIFACT_PATH}"
   status_line "Reusing existing rootfs manifest: ${ROOTFS_MANIFEST_PATH}"
+  status_line "Reusing existing rootfs build log: ${ROOTFS_BUILD_LOG_PATH}"
   return 0
 }
 
@@ -133,8 +160,12 @@ function main() {
   if can_reuse_rootfs_artifact; then
     log_step "Skipping Stage 1: reusing common rootfs"
   else
+    start_rootfs_build_log
     log_step "Running Stage 1: build common rootfs"
     run_logged bash "${PROJECT_ROOT}/scripts/build-rootfs.sh" "${BUILD_ID}"
+    switch_build_log "${IMAGE_BUILD_LOG}"
+    status_line "Rootfs build completed."
+    status_line "Rootfs build log: ${ROOTFS_BUILD_LOG}"
   fi
   log_step "Running Stage 2: assemble profile-specific image"
   run_logged bash "${PROJECT_ROOT}/scripts/assemble-image.sh" "${BUILD_ID}"
@@ -148,7 +179,8 @@ function main() {
   status_line "Image artifact: ${FINAL_IMAGE_PATH}"
   status_line "Checksum: ${FINAL_IMAGE_CHECKSUM_PATH}"
   status_line "Image manifest: ${FINAL_IMAGE_MANIFEST_PATH}"
-  status_line "Build log: ${BUILD_LOG}"
+  status_line "Rootfs build log: ${ROOTFS_BUILD_LOG}"
+  status_line "Image build log: ${IMAGE_BUILD_LOG}"
 }
 
 main "${1:-}"

@@ -144,6 +144,16 @@ function validate_reusable_rootfs_manifest() {
       exit 1
     fi
 
+    if [ "${rootfs_build_log:-}" != "${ROOTFS_BUILD_LOG_NAME}" ]; then
+      printf 'Existing rootfs manifest has rootfs_build_log=%s, expected %s\n' "${rootfs_build_log:-missing}" "${ROOTFS_BUILD_LOG_NAME}" >&2
+      exit 1
+    fi
+
+    if [ ! -f "${ROOTFS_BUILD_LOG_PATH}" ]; then
+      printf 'Existing rootfs build log is missing: %s\n' "${ROOTFS_BUILD_LOG_PATH}" >&2
+      exit 1
+    fi
+
     if [ "${git_commit:-}" != "${GIT_COMMIT}" ]; then
       printf 'Existing rootfs manifest has git_commit=%s, expected %s\n' "${git_commit:-missing}" "${GIT_COMMIT}" >&2
       exit 1
@@ -167,6 +177,7 @@ function write_rootfs_manifest() {
   write_manifest_entry "${ROOTFS_MANIFEST_PATH}" "rootfs_name" "${ROOTFS_NAME_PREFIX}"
   write_manifest_entry "${ROOTFS_MANIFEST_PATH}" "artifact_name" "${ROOTFS_ARTIFACT_NAME}"
   write_manifest_entry "${ROOTFS_MANIFEST_PATH}" "artifact_format" "tar.zst"
+  write_manifest_entry "${ROOTFS_MANIFEST_PATH}" "rootfs_build_log" "${ROOTFS_BUILD_LOG_NAME}"
   write_build_identity_manifest_entries "${ROOTFS_MANIFEST_PATH}"
   write_rootfs_configuration_manifest_entries "${ROOTFS_MANIFEST_PATH}"
 }
@@ -178,6 +189,8 @@ function write_final_image_manifest() {
   write_manifest_entry "${FINAL_IMAGE_MANIFEST_PATH}" "artifact_name" "${FINAL_IMAGE_NAME}"
   write_manifest_entry "${FINAL_IMAGE_MANIFEST_PATH}" "artifact_format" "${RESOLVED_IMAGE_FINAL_FORMAT}"
   write_manifest_entry "${FINAL_IMAGE_MANIFEST_PATH}" "rootfs_artifact" "${ROOTFS_ARTIFACT_NAME}"
+  write_manifest_entry "${FINAL_IMAGE_MANIFEST_PATH}" "rootfs_build_log" "${ROOTFS_BUILD_LOG_NAME}"
+  write_manifest_entry "${FINAL_IMAGE_MANIFEST_PATH}" "image_build_log" "${IMAGE_BUILD_LOG_NAME}"
   write_build_identity_manifest_entries "${FINAL_IMAGE_MANIFEST_PATH}"
   write_rootfs_configuration_manifest_entries "${FINAL_IMAGE_MANIFEST_PATH}"
   write_image_profile_manifest_entries "${FINAL_IMAGE_MANIFEST_PATH}"
