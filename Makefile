@@ -1,6 +1,11 @@
 BUILD_ID ?=
 BUILD_VERSION ?=
 IMAGE_PROFILES ?= generic-qemu digitalocean
+BUILD_WORKSPACE ?=
+OUTPUT_ROOT ?=
+TMP_ROOT ?=
+BUILD_WORKDIR ?=
+export BUILD_WORKSPACE OUTPUT_ROOT TMP_ROOT BUILD_WORKDIR
 BUILD_VERSION_IS_BUILD_ID := $(shell printf '%s\n' '$(BUILD_VERSION)' | grep -Eq '^[0-9]{8}\.[0-9]+$$' && printf yes)
 ifeq ($(strip $(BUILD_ID)),)
 ifeq ($(BUILD_VERSION_IS_BUILD_ID),yes)
@@ -11,7 +16,7 @@ endif
 else
 BUILD_ARG := $(BUILD_ID)
 endif
-SUDO_PRESERVE_ENV := IMAGE_PROFILE,IMAGE_PROFILES,BUILD_ID,BUILD_VERSION,REUSE_ROOTFS,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO
+SUDO_PRESERVE_ENV := IMAGE_PROFILE,IMAGE_PROFILES,BUILD_ID,BUILD_VERSION,BUILD_WORKSPACE,OUTPUT_ROOT,TMP_ROOT,BUILD_WORKDIR,REUSE_ROOTFS,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO
 
 .PHONY: build build-all publish publish-dry-run weekly-build weekly-build-dry-run weekly-publish weekly-publish-dry-run check-env lint clean help
 
@@ -66,11 +71,12 @@ help:
 		'Non-root builds prompt for sudo before running ./build.sh.' \
 		'`make build` preserves supported image/build environment overrides across sudo.' \
 		'`make build-all` builds every profile in IMAGE_PROFILES sequentially and reuses the Stage 1 rootfs artifact after the first profile, or immediately when REUSE_ROOTFS=true.' \
+		'Set BUILD_WORKSPACE=/path to place output/ and tmp/ under a custom build workspace.' \
 		'' \
 		'Targets:' \
-		'  build      Run the staged build pipeline and write artifacts under output/rootfs and output/images' \
+		'  build      Run the staged build pipeline and write artifacts under the configured output/rootfs and output/images' \
 		'  build-all  Build all profiles listed in IMAGE_PROFILES using one BUILD_ID and a reused rootfs tarball' \
-		'  publish    Publish an existing weekly BUILD_ID from output/images to R2 without sudo' \
+		'  publish    Publish an existing weekly BUILD_ID from the configured output/images to R2 without sudo' \
 		'  publish-dry-run  Validate and print the planned R2 uploads for BUILD_ID without uploading' \
 		'  weekly-build  Build IMAGE_PROFILES for the weekly channel and print publish commands for the resolved BUILD_ID' \
 		'  weekly-build-dry-run  Print the planned weekly build-only flow without building or uploading' \
@@ -78,5 +84,5 @@ help:
 		'  weekly-publish-dry-run  Print the planned weekly build/publish commands without building or uploading' \
 		'  check-env  Validate host requirements, sudo availability, and free space' \
 		'  lint       Run shell syntax checks and shellcheck' \
-		'  clean      Unmount stale tmp/ build leftovers, remove tmp/, and delete versioned build artifacts from output/' \
+		'  clean      Unmount stale tmp/ build leftovers and delete artifacts from the configured build workspace' \
 		'  help       Show this help'

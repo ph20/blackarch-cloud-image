@@ -191,6 +191,16 @@ IMAGE_PROFILE=generic-qemu BLACKARCH_PROFILE=common DISK_SIZE=20G make build
 IMAGE_PROFILE=digitalocean BUILD_ID=20260321.2 make build
 ```
 
+Place both build artifacts and temporary build state under a custom workspace:
+
+```bash
+BUILD_WORKSPACE=/build make weekly-build
+```
+
+This writes artifacts under `/build/output` and temporary state under
+`/build/tmp`. `make publish`, `make publish-dry-run`, and `make clean` use the
+same workspace when `BUILD_WORKSPACE` is set.
+
 Reuse an existing compatible rootfs artifact for another profile build:
 
 ```bash
@@ -219,8 +229,8 @@ IMAGE_PROFILES="generic-qemu digitalocean" BUILD_ID=20260321.2 make build-all
 
 R2 publishing is separate from the build stages. It uploads only explicitly
 selected final image outputs and build logs described by generated manifests
-under `output/images`; `output/` remains a temporary build workspace, not a
-mirror.
+under the configured `output/images`; `output/` remains a temporary build
+workspace, not a mirror.
 
 Build the weekly profiles without publishing:
 
@@ -276,7 +286,7 @@ The builder resolves three separate version values:
 1. positional argument to `./build.sh`
 2. `BUILD_ID`
 3. legacy `BUILD_VERSION`
-4. auto-generated next `YYYYMMDD.N` based on existing files under `output/`
+4. auto-generated next `YYYYMMDD.N` based on existing files under the configured `output/`
 
 If `BUILD_ID` and `BUILD_VERSION` are both set, they must match. Legacy `BUILD_VERSION` is only consumed when it already matches `YYYYMMDD.N`; unrelated ambient values are ignored.
 
@@ -330,6 +340,12 @@ Core staged-build settings:
   Optional explicit `YYYYMMDD.N` build identity. If unset, the builder auto-selects the next daily build number.
 - `BUILD_VERSION`
   Legacy compatibility alias for `BUILD_ID`. It is only honored when it already matches `YYYYMMDD.N`. Prefer `BUILD_ID` for new automation.
+- `BUILD_WORKSPACE`
+  Optional build workspace root. Defaults to the repository root and must be an existing writable directory. When set, artifacts are written under `${BUILD_WORKSPACE}/output` and temporary build state under `${BUILD_WORKSPACE}/tmp`, unless `OUTPUT_ROOT` or `TMP_ROOT` override those paths directly.
+- `OUTPUT_ROOT`
+  Optional advanced override for the artifact output root. Defaults to `${BUILD_WORKSPACE}/output`.
+- `TMP_ROOT`
+  Optional advanced override for temporary build state. Defaults to `${BUILD_WORKSPACE}/tmp`.
 - `REUSE_ROOTFS`
   `true` or `false`. Default: `false`. When `true`, `build.sh` reuses an existing compatible rootfs tarball for the selected `release_version` and `build_id` instead of rebuilding Stage 1.
 - `IMAGE_PROFILES`
@@ -441,7 +457,8 @@ function profile_hook() {
 
 ## Output artifacts
 
-Successful builds write staged artifacts under `output/`:
+Successful builds write staged artifacts under `${BUILD_WORKSPACE}/output/`.
+When `BUILD_WORKSPACE` is unset, that is the repository-local `output/`:
 
 - `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.tar.zst`
 - `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.manifest`
@@ -510,14 +527,14 @@ They also keep resolved build settings such as disk size, BlackArch profile/pack
 Verify the final checksum after a build:
 
 ```bash
-cd output/images
+cd "${BUILD_WORKSPACE:-.}/output/images"
 sha256sum -c BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2.SHA256
 ```
 
 or:
 
 ```bash
-cd output/images
+cd "${BUILD_WORKSPACE:-.}/output/images"
 sha256sum -c BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz.SHA256
 ```
 
@@ -556,9 +573,9 @@ Available targets:
 - `lint`
   Run `bash -n` and `shellcheck`.
 - `clean`
-  Remove build leftovers under `tmp/` and delete staged output artifacts.
+  Remove build leftovers under the configured `tmp/` and delete staged output artifacts.
 - `publish`
-  Publish an existing weekly `BUILD_ID` from `output/images` to R2 without sudo.
+  Publish an existing weekly `BUILD_ID` from the configured `output/images` to R2 without sudo.
 - `publish-dry-run`
   Validate and print planned R2 uploads for an existing `BUILD_ID`.
 - `weekly-build`

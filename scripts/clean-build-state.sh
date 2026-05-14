@@ -8,10 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
-OUTPUT_ROOT="${PROJECT_ROOT}/output"
-readonly OUTPUT_ROOT
-TMP_ROOT="${PROJECT_ROOT}/tmp"
-readonly TMP_ROOT
+
+# shellcheck source=scripts/lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
+
 CLEANED_ANY=0
 
 function log_cleanup_action() {
@@ -68,8 +68,10 @@ function require_root_for_cleanup() {
   fi
 
   if cleanup_requires_root; then
-    printf '%s\n' 'Root access is required to clean up mounted build leftovers under tmp/.'
-    exec sudo -p '[sudo] Enter your password to clean BlackArch build leftovers for %p: ' bash "${BASH_SOURCE[0]}"
+    printf 'Root access is required to clean up mounted build leftovers under %s.\n' "${TMP_ROOT}"
+    exec sudo --preserve-env=BUILD_WORKSPACE,OUTPUT_ROOT,TMP_ROOT,BUILD_WORKDIR \
+      -p '[sudo] Enter your password to clean BlackArch build leftovers for %p: ' \
+      bash "${BASH_SOURCE[0]}"
   fi
 }
 

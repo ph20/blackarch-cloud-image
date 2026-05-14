@@ -53,6 +53,9 @@ function write_build_context_log_lines() {
   status_line "Git tag: ${GIT_TAG}"
   status_line "Profile: ${RESOLVED_IMAGE_PROFILE}"
   status_line "Reuse rootfs artifact: ${REUSE_ROOTFS:-false}"
+  status_line "Build workspace: ${BUILD_WORKSPACE}"
+  status_line "Output root: ${OUTPUT_ROOT}"
+  status_line "Temporary root: ${TMP_ROOT}"
 
   if [ "${BUILD_ID_SOURCE}" = "legacy-build-version-env" ]; then
     status_line "Using legacy BUILD_VERSION as BUILD_ID."

@@ -1,8 +1,8 @@
 # R2 Publishing
 
 This workflow publishes explicitly selected BlackArch image build outputs from
-`output/images` to Cloudflare R2. R2 is the canonical artifact store; local
-`output/` is only a temporary build workspace.
+the configured `output/images` directory to Cloudflare R2. R2 is the canonical
+artifact store; local `output/` is only a temporary build workspace.
 
 The publishing scripts upload direct object keys. They do not use `aws s3 sync`
 and do not create a local artifact mirror.
@@ -26,6 +26,7 @@ Optional environment:
 
 - `AWS_PROFILE`, default `r2-ph20`
 - `GPG_SIGNING_KEY`, recommended for selecting the `packages@ph20.org` signing key
+- `BUILD_WORKSPACE`, when publishing artifacts built outside the repository-local workspace
 
 Start from the non-secret example:
 
@@ -46,6 +47,12 @@ Dry-run mode validates local manifests, files, checksums, the per-image build
 logs, and the shared rootfs build log, then prints the planned object keys,
 content types, cache-control values, and public URLs. It does not upload objects
 or require R2 credentials.
+
+If the build used a custom workspace, use the same value when publishing:
+
+```bash
+BUILD_WORKSPACE=/build BUILD_ID=20260328.0 make publish-dry-run
+```
 
 ## Publish
 

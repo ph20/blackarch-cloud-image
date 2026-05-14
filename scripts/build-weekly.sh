@@ -56,11 +56,14 @@ function parse_args() {
 function print_dry_run_plan() {
   local build_id="${1}"
   local profiles="${2}"
+  local path_env_prefix=''
+
+  path_env_prefix="$(weekly_path_env_prefix)"
 
   printf '%s\n' 'DRY-RUN: no build or R2 upload will be performed.'
   printf 'Build ID: %s\n' "${build_id}"
   printf 'Profiles: %s\n' "${profiles}"
-  printf 'Build command: IMAGE_PROFILES=%q BUILD_ID=%q make build-all\n' "${profiles}" "${build_id}"
+  printf 'Build command: %sIMAGE_PROFILES=%q BUILD_ID=%q make build-all\n' "${path_env_prefix}" "${profiles}" "${build_id}"
   weekly_print_publish_commands "${build_id}"
 }
 

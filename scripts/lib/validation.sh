@@ -279,6 +279,7 @@ function validate_build_configuration() {
 
   validate_release_version_value "${requested_release_version}" || return 1
   validate_build_id_value "${requested_build_id}" || return 1
+  validate_build_workspace_configuration || return 1
   validate_reuse_rootfs_value "${REUSE_ROOTFS:-false}" || return 1
   validate_image_profile_value "${IMAGE_PROFILE:-generic-qemu}" || return 1
   validate_size_value "DEFAULT_DISK_SIZE" "${DEFAULT_DISK_SIZE:-2G}" || return 1

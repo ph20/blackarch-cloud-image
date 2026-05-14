@@ -8,10 +8,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 readonly PROJECT_ROOT
-IMAGE_OUTPUT_DIR="${PROJECT_ROOT}/output/images"
-readonly IMAGE_OUTPUT_DIR
-ROOTFS_OUTPUT_DIR="${PROJECT_ROOT}/output/rootfs"
-readonly ROOTFS_OUTPUT_DIR
+
+# shellcheck source=scripts/lib/config.sh
+source "${SCRIPT_DIR}/lib/config.sh"
 
 # shellcheck source=scripts/lib/r2.sh
 source "${SCRIPT_DIR}/lib/r2.sh"
@@ -44,7 +43,7 @@ function usage() {
   cat <<'EOF'
 Usage: scripts/publish-r2.sh [options]
 
-Publish selected BlackArch image build artifacts from output/images to R2.
+Publish selected BlackArch image build artifacts from the configured output/images to R2.
 
 Options:
   --channel weekly|releases   Artifact channel (default: weekly)

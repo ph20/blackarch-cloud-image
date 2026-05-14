@@ -73,6 +73,7 @@ function main() {
   status_line "Build ID: ${BUILD_ID}"
   status_line "Artifact version: ${ARTIFACT_VERSION}"
   status_line "Git commit: ${GIT_COMMIT}"
+  status_line "Build workspace: ${BUILD_WORKSPACE}"
   status_line "Profiles: ${profile_list}"
 
   for profile in ${profile_list}; do

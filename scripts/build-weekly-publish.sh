@@ -60,13 +60,16 @@ function parse_args() {
 function print_dry_run_plan() {
   local build_id="${1}"
   local profiles="${2}"
+  local path_env_prefix=''
+
+  path_env_prefix="$(weekly_path_env_prefix)"
 
   printf '%s\n' 'DRY-RUN: no build or R2 upload will be performed.'
   printf 'Build ID: %s\n' "${build_id}"
   printf 'Profiles: %s\n' "${profiles}"
-  printf 'Build command: IMAGE_PROFILES=%q BUILD_ID=%q make build-all\n' "${profiles}" "${build_id}"
-  printf 'Publish dry-run command: BUILD_ID=%q make publish-dry-run\n' "${build_id}"
-  printf 'Publish command: BUILD_ID=%q make publish\n' "${build_id}"
+  printf 'Build command: %sIMAGE_PROFILES=%q BUILD_ID=%q make build-all\n' "${path_env_prefix}" "${profiles}" "${build_id}"
+  printf 'Publish dry-run command: %sBUILD_ID=%q make publish-dry-run\n' "${path_env_prefix}" "${build_id}"
+  printf 'Publish command: %sBUILD_ID=%q make publish\n' "${path_env_prefix}" "${build_id}"
 }
 
 function require_publish_preflight() {

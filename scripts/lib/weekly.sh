@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 readonly WEEKLY_DEFAULT_IMAGE_PROFILES="generic-qemu digitalocean"
-readonly WEEKLY_SUDO_PRESERVE_ENV="IMAGE_PROFILE,IMAGE_PROFILES,BUILD_ID,BUILD_VERSION,REUSE_ROOTFS,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO"
+readonly WEEKLY_SUDO_PRESERVE_ENV="IMAGE_PROFILE,IMAGE_PROFILES,BUILD_ID,BUILD_VERSION,BUILD_WORKSPACE,OUTPUT_ROOT,TMP_ROOT,BUILD_WORKDIR,REUSE_ROOTFS,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO"
 
 function weekly_die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -18,6 +18,23 @@ function weekly_validate_build_id() {
 
 function weekly_requested_profiles() {
   printf '%s\n' "${IMAGE_PROFILES:-${WEEKLY_DEFAULT_IMAGE_PROFILES}}"
+}
+
+function weekly_path_env_prefix() {
+  local -a entries=()
+  local var=''
+  local value=''
+
+  for var in BUILD_WORKSPACE OUTPUT_ROOT TMP_ROOT; do
+    value="${!var:-}"
+    if [ -n "${value}" ]; then
+      entries+=("$(printf '%s=%q' "${var}" "${value}")")
+    fi
+  done
+
+  if [ "${#entries[@]}" -gt 0 ]; then
+    printf '%s ' "${entries[*]}"
+  fi
 }
 
 function weekly_resolve_build_id() {
@@ -65,11 +82,14 @@ function weekly_run_multi_profile_build() {
 
 function weekly_print_publish_commands() {
   local build_id="${1}"
+  local path_env_prefix=''
+
+  path_env_prefix="$(weekly_path_env_prefix)"
 
   printf '\n'
   printf '%s\n' 'Publish this build with:'
-  printf '  BUILD_ID=%s make publish-dry-run\n' "${build_id}"
-  printf '  BUILD_ID=%s make publish\n' "${build_id}"
+  printf '  %sBUILD_ID=%s make publish-dry-run\n' "${path_env_prefix}" "${build_id}"
+  printf '  %sBUILD_ID=%s make publish\n' "${path_env_prefix}" "${build_id}"
   printf '%s\n' 'Equivalent direct command:'
-  printf '  bash ./scripts/publish-r2.sh --channel weekly --build-id %s --promote-latest\n' "${build_id}"
+  printf '  %sbash ./scripts/publish-r2.sh --channel weekly --build-id %s --promote-latest\n' "${path_env_prefix}" "${build_id}"
 }

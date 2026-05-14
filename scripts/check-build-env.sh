@@ -174,12 +174,14 @@ function check_free_space() {
   local required_bytes=''
   local available_human=''
   local required_human=''
+  local df_path=''
   local scope_description='for the selected build configuration'
 
-  available_bytes="$(df --output=avail -B1 "${PROJECT_ROOT}" | awk 'NR == 2 { print $1 }')"
+  df_path="$(workspace_nearest_existing_path "${BUILD_WORKSPACE}")"
+  available_bytes="$(df --output=avail -B1 "${df_path}" | awk 'NR == 2 { print $1 }')"
 
   if ! [[ "${available_bytes}" =~ ^[0-9]+$ ]]; then
-    report_fail "cannot determine free space on ${PROJECT_ROOT}"
+    report_fail "cannot determine free space for build workspace ${BUILD_WORKSPACE}"
     return
   fi
 
@@ -194,9 +196,9 @@ function check_free_space() {
   fi
 
   if [ "${available_bytes}" -ge "${required_bytes}" ]; then
-    report_ok "workspace filesystem has ${available_human} free (estimated minimum ${required_human} ${scope_description})"
+    report_ok "workspace filesystem has ${available_human} free at ${df_path} (estimated minimum ${required_human} ${scope_description})"
   else
-    report_fail "workspace filesystem has ${available_human} free, below the estimated minimum ${required_human} ${scope_description}"
+    report_fail "workspace filesystem has ${available_human} free at ${df_path}, below the estimated minimum ${required_human} ${scope_description}"
   fi
 }
 

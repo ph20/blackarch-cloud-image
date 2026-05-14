@@ -4,13 +4,24 @@
 readonly LIB_DIR
 : "${PROJECT_ROOT:=$(cd "${LIB_DIR}/../.." && pwd)}"
 readonly PROJECT_ROOT
-: "${OUTPUT_ROOT:=${PROJECT_ROOT}/output}"
+
+# shellcheck source=scripts/lib/workspace.sh
+source "${LIB_DIR}/workspace.sh"
+
+: "${BUILD_WORKSPACE:=${PROJECT_ROOT}}"
+BUILD_WORKSPACE="$(resolve_project_path "${BUILD_WORKSPACE}")"
+readonly BUILD_WORKSPACE
+: "${OUTPUT_ROOT:=${BUILD_WORKSPACE}/output}"
+OUTPUT_ROOT="$(resolve_project_path "${OUTPUT_ROOT}")"
 readonly OUTPUT_ROOT
 : "${ROOTFS_OUTPUT_DIR:=${OUTPUT_ROOT}/rootfs}"
+ROOTFS_OUTPUT_DIR="$(resolve_project_path "${ROOTFS_OUTPUT_DIR}")"
 readonly ROOTFS_OUTPUT_DIR
 : "${IMAGE_OUTPUT_DIR:=${OUTPUT_ROOT}/images}"
+IMAGE_OUTPUT_DIR="$(resolve_project_path "${IMAGE_OUTPUT_DIR}")"
 readonly IMAGE_OUTPUT_DIR
-: "${TMP_ROOT:=${PROJECT_ROOT}/tmp}"
+: "${TMP_ROOT:=${BUILD_WORKSPACE}/tmp}"
+TMP_ROOT="$(resolve_project_path "${TMP_ROOT}")"
 readonly TMP_ROOT
 : "${PROFILES_DIR:=${PROJECT_ROOT}/profiles}"
 readonly PROFILES_DIR
