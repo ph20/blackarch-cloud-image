@@ -74,10 +74,15 @@ The assembled image includes:
 │   ├── build-rootfs.sh              # Stage 1: build reusable rootfs artifact
 │   ├── assemble-image.sh            # Stage 2: assemble bootable raw staging image
 │   ├── export-image.sh              # Stage 3: export final profile artifact
+│   ├── publish-r2.sh                # Publish selected image artifacts to R2
+│   ├── next-build-id-r2.sh          # Resolve the next publishing build ID from R2
+│   ├── build-weekly.sh              # Build weekly profiles and print publish commands
+│   ├── build-weekly-publish.sh      # Weekly build then publish wrapper
 │   ├── check-build-env.sh           # Host preflight checks
 │   ├── clean-build-state.sh         # Remove tmp/ leftovers and output artifacts
 │   ├── setup-blackarch-repo.sh      # In-image BlackArch repository bootstrap
 │   └── lib/                         # Shared config, logging, manifests, mounts, validation
+├── publish/                         # R2 publishing docs and non-secret env example
 └── Makefile                         # Convenience targets
 ```
 
@@ -209,6 +214,51 @@ Override the profile list used by `make build-all`:
 ```bash
 IMAGE_PROFILES="generic-qemu digitalocean" BUILD_ID=20260321.2 make build-all
 ```
+
+## Publishing to R2
+
+R2 publishing is separate from the build stages. It uploads only explicitly
+selected final image outputs and build logs described by generated manifests
+under `output/images`; `output/` remains a temporary build workspace, not a
+mirror.
+
+Build the weekly profiles without publishing:
+
+```bash
+IMAGE_PROFILES="generic-qemu digitalocean" make weekly-build
+```
+
+After a successful build, `make weekly-build` prints the exact publish commands
+for the resolved `BUILD_ID`, for example:
+
+```bash
+BUILD_ID=20260514.0 make publish-dry-run
+BUILD_ID=20260514.0 make publish
+```
+
+Dry-run an existing build publish:
+
+```bash
+BUILD_ID=20260328.0 make publish-dry-run
+```
+
+Publish an existing weekly build:
+
+```bash
+BUILD_ID=20260328.0 make publish
+```
+
+Build the weekly profiles and publish:
+
+```bash
+IMAGE_PROFILES="generic-qemu digitalocean" make weekly-publish
+```
+
+Without an explicit `BUILD_ID`, the weekly wrappers ask R2 for the next default
+build ID via `scripts/next-build-id-r2.sh`. The combined `weekly-publish`
+target checks the required R2 publish configuration before starting the root
+build. See `publish/README.md` for R2 environment setup, signing, object
+layout, and verification commands.
 
 ## Versioning
 
@@ -395,6 +445,7 @@ Successful builds write staged artifacts under `output/`:
 
 - `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.tar.zst`
 - `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.manifest`
+- `output/rootfs/blackarch-rootfs-v<release_version>+<build_id>.build.log`
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2`
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.qcow2.SHA256`
 - `output/images/BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.manifest`
@@ -405,12 +456,17 @@ Successful builds write staged artifacts under `output/`:
 
 The manifest files are simple `key=value` records.
 
+Stage 1 writes the reusable rootfs log under `output/rootfs`. Each profile then
+writes its own image log under `output/images` for the Stage 2 and Stage 3 work
+performed against that rootfs.
+
 The reusable rootfs manifest is intentionally profile-neutral. It includes the shared Stage 1 identity and configuration, including:
 
 - `artifact_type`
 - `rootfs_name`
 - `artifact_name`
 - `artifact_format`
+- `rootfs_build_log`
 - `release_version`
 - `build_id`
 - `artifact_version`
@@ -437,6 +493,8 @@ Final image manifests include:
 - `artifact_name`
 - `artifact_format`
 - `rootfs_artifact`
+- `rootfs_build_log`
+- `image_build_log`
 - `release_version`
 - `build_id`
 - `artifact_version`
@@ -499,3 +557,15 @@ Available targets:
   Run `bash -n` and `shellcheck`.
 - `clean`
   Remove build leftovers under `tmp/` and delete staged output artifacts.
+- `publish`
+  Publish an existing weekly `BUILD_ID` from `output/images` to R2 without sudo.
+- `publish-dry-run`
+  Validate and print planned R2 uploads for an existing `BUILD_ID`.
+- `weekly-build`
+  Build the weekly profile set and print publish commands for the resolved `BUILD_ID`.
+- `weekly-build-dry-run`
+  Print the planned weekly build-only flow without building or uploading.
+- `weekly-publish`
+  Build the weekly profile set, then publish to R2.
+- `weekly-publish-dry-run`
+  Print the planned weekly build/publish commands without building or uploading.

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+set -o nounset
+set -o errexit
+set -o pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+readonly PROJECT_ROOT
+
+# shellcheck source=scripts/lib/weekly.sh
+source "${SCRIPT_DIR}/lib/weekly.sh"
+# shellcheck source=scripts/lib/r2.sh
+source "${SCRIPT_DIR}/lib/r2.sh"
+
+DRY_RUN=0
+POSITIONAL_BUILD_ID=""
+
+function usage() {
+  cat <<'EOF'
+Usage: scripts/build-weekly-publish.sh [options] [BUILD_ID]
+
+Build the configured weekly image profiles and publish the build to R2.
+For a build-only workflow that prints the exact publish command, use
+scripts/build-weekly.sh.
+
+Options:
+  --dry-run     Print the planned build and publish commands only
+  -h, --help    Show this help
+
+Environment:
+  BUILD_ID          Optional explicit YYYYMMDD.N build ID
+  IMAGE_PROFILES   Space-separated profile list (default: generic-qemu digitalocean)
+EOF
+}
+
+function parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "${1}" in
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      -*)
+        weekly_die "Unknown option: ${1}"
+        ;;
+      *)
+        [ -z "${POSITIONAL_BUILD_ID}" ] || weekly_die 'Only one positional BUILD_ID is supported'
+        POSITIONAL_BUILD_ID="${1}"
+        ;;
+    esac
+    shift
+  done
+}
+
+function print_dry_run_plan() {
+  local build_id="${1}"
+  local profiles="${2}"
+
+  printf '%s\n' 'DRY-RUN: no build or R2 upload will be performed.'
+  printf 'Build ID: %s\n' "${build_id}"
+  printf 'Profiles: %s\n' "${profiles}"
+  printf 'Build command: IMAGE_PROFILES=%q BUILD_ID=%q make build-all\n' "${profiles}" "${build_id}"
+  printf 'Publish dry-run command: BUILD_ID=%q make publish-dry-run\n' "${build_id}"
+  printf 'Publish command: BUILD_ID=%q make publish\n' "${build_id}"
+}
+
+function require_publish_preflight() {
+  export R2_DRY_RUN=0
+  r2_require_config
+  r2_require_publish_tools
+  weekly_need_cmd jq
+  weekly_need_cmd sha256sum
+  weekly_need_cmd gpg
+}
+
+function main() {
+  local build_id=''
+  local profiles=''
+
+  parse_args "$@"
+  build_id="$(weekly_resolve_build_id "${SCRIPT_DIR}" "${POSITIONAL_BUILD_ID}" "${DRY_RUN}")"
+  profiles="$(weekly_requested_profiles)"
+
+  if [ "${DRY_RUN}" -eq 1 ]; then
+    print_dry_run_plan "${build_id}" "${profiles}"
+    return 0
+  fi
+
+  cd "${PROJECT_ROOT}"
+  require_publish_preflight
+  weekly_run_multi_profile_build "${SCRIPT_DIR}" "${build_id}" "${profiles}"
+  BUILD_ID="${build_id}" bash "${SCRIPT_DIR}/publish-r2.sh" \
+    --channel weekly \
+    --build-id "${build_id}" \
+    --promote-latest
+}
+
+main "$@"

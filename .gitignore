@@ -1,5 +1,6 @@
 /output/
 /tmp/
+/publish/env.r2.local
 .idea/*
 !.idea/.gitignore
 !.idea/blackarch-cloud-image.iml
