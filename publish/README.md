@@ -21,10 +21,11 @@ Required environment:
 - `R2_BUCKET`
 - `R2_ENDPOINT_URL`
 - `R2_PUBLIC_BASE_URL`
+- `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, unless using `AWS_PROFILE`
 
 Optional environment:
 
-- `AWS_PROFILE`, default `r2-ph20`
+- `AWS_PROFILE`, when using AWS CLI profile credentials instead of direct env credentials
 - `GPG_SIGNING_KEY`, recommended for selecting the `packages@ph20.org` signing key
 - `BUILD_WORKSPACE`, when publishing artifacts built outside the repository-local workspace
 
@@ -35,7 +36,21 @@ cp publish/env.r2.example publish/env.r2.local
 ```
 
 Edit/export the values manually. Configure AWS access key and secret material
-separately with `aws configure`, environment variables, or a secret manager.
+in `publish/env.r2.local`, with `aws configure --profile ...`, or through
+another secret manager.
+
+To use direct env credentials:
+
+```bash
+source publish/env.r2.local
+```
+
+To use an AWS CLI profile instead, omit `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` and set:
+
+```bash
+export AWS_PROFILE="r2-ph20"
+```
 
 ## Dry Run
 

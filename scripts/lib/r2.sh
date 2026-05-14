@@ -58,12 +58,10 @@ function r2_public_url_for_key() {
 }
 
 function r2_aws_base_command() {
-  local profile="${AWS_PROFILE:-r2-ph20}"
-
   R2_AWS_CMD=(aws --endpoint-url "${R2_ENDPOINT_URL}")
 
-  if [ -n "${profile}" ]; then
-    R2_AWS_CMD+=(--profile "${profile}")
+  if [ -n "${AWS_PROFILE:-}" ]; then
+    R2_AWS_CMD+=(--profile "${AWS_PROFILE}")
   fi
 
   if [ -n "${AWS_CLI_EXTRA_ARGS:-}" ]; then

@@ -88,11 +88,9 @@ function has_required_r2_config() {
 }
 
 function aws_base_command() {
-  local profile="${AWS_PROFILE:-r2-ph20}"
-
   AWS_CMD=(aws --endpoint-url "${R2_ENDPOINT_URL}")
-  if [ -n "${profile}" ]; then
-    AWS_CMD+=(--profile "${profile}")
+  if [ -n "${AWS_PROFILE:-}" ]; then
+    AWS_CMD+=(--profile "${AWS_PROFILE}")
   fi
   if [ -n "${AWS_CLI_EXTRA_ARGS:-}" ]; then
     # shellcheck disable=SC2206
