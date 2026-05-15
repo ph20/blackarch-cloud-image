@@ -66,6 +66,7 @@ function check_arch_family_host() {
 function check_required_commands() {
   local -a required_commands=(
     arch-chroot
+    blkid
     blockdev
     curl
     fstrim

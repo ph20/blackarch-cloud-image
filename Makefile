@@ -1,6 +1,6 @@
 BUILD_ID ?=
 BUILD_VERSION ?=
-IMAGE_PROFILES ?= generic-qemu digitalocean
+IMAGE_PROFILES ?= generic-qemu digitalocean hetzner
 BUILD_WORKSPACE ?=
 OUTPUT_ROOT ?=
 TMP_ROOT ?=

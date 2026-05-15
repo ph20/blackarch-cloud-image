@@ -14,6 +14,8 @@ Supported platform profiles:
   Exports `qcow2`, uses a Btrfs root filesystem, installs and enables `qemu-guest-agent`, defaults to `2G`, and keeps the current BIOS+UEFI boot path.
 - `digitalocean`
   Exports `img.gz`, uses an ext4 root filesystem, keeps a BIOS-only boot path, skips `qemu-guest-agent`, adds a DigitalOcean-specific `cloud-init` datasource override, cleans `cloud-init` state before packaging, and defaults to `4G`.
+- `hetzner`
+  Exports `qcow2` for `hcloud-upload-image`, uses an ext4 root filesystem, keeps BIOS+UEFI boot support, installs and enables `qemu-guest-agent`, adds a Hetzner-specific `cloud-init` datasource override, permits SSH key login as both `root` and `blackarch`, keeps SSH password authentication disabled, and defaults to `4G`.
 
 Profile customization is localized through:
 
@@ -48,6 +50,7 @@ The assembled image includes:
 - profile-specific root filesystem behavior:
   `generic-qemu` uses Btrfs with Zstandard compression
   `digitalocean` uses ext4
+  `hetzner` uses ext4
 - Stage 1 suppresses the early `mkinitcpio` package hook for the reusable rootfs tree
 - Stage 1 recreates the kernel preset and `/boot/vmlinuz-*` copy needed for Stage 2 finalization without generating initramfs yet
 - Stage 1 now renders the preset from the upstream `mkinitcpio` template, resolves all known placeholders, and fails early if any `%...%` token remains
@@ -66,6 +69,8 @@ The assembled image includes:
 │   ├── digitalocean.sh              # Optional DigitalOcean profile hook
 │   ├── digitalocean/
 │   │   └── rootfs-overlay/          # DigitalOcean rootfs overlay files
+│   ├── hetzner.env                  # Hetzner Cloud profile defaults
+│   ├── hetzner.sh                   # Optional Hetzner profile hook
 │   └── generic-qemu.env             # Generic QEMU/KVM profile defaults
 ├── images/
 │   ├── base.sh                      # Common rootfs and bootable disk customization hooks
@@ -97,6 +102,7 @@ Build on an Arch-based Linux host with:
 Required commands:
 
 - `arch-chroot`
+- `blkid`
 - `blockdev`
 - `curl`
 - `fstrim`
@@ -123,7 +129,7 @@ Additional commands are required by profile behavior:
 - `btrfs`, `chattr`, and `mkfs.btrfs`
   Required for Btrfs-root profiles such as `generic-qemu`.
 - `mkfs.fat`
-  Required for profiles that keep an EFI system partition, such as `generic-qemu`.
+  Required for profiles that keep an EFI system partition, such as `generic-qemu` and `hetzner`.
 
 Run the preflight checks before building:
 
@@ -143,6 +149,12 @@ DigitalOcean export:
 
 ```bash
 sudo IMAGE_PROFILE=digitalocean ./build.sh
+```
+
+Hetzner Cloud export for `hcloud-upload-image`:
+
+```bash
+sudo IMAGE_PROFILE=hetzner ./build.sh
 ```
 
 Explicit build ID:
@@ -222,7 +234,7 @@ BUILD_ID=20260321.2 REUSE_ROOTFS=true make build-all
 Override the profile list used by `make build-all`:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" BUILD_ID=20260321.2 make build-all
+IMAGE_PROFILES="generic-qemu digitalocean hetzner" BUILD_ID=20260321.2 make build-all
 ```
 
 ## Publishing to R2
@@ -235,7 +247,7 @@ workspace, not a mirror.
 Build the weekly profiles without publishing:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" make weekly-build
+IMAGE_PROFILES="generic-qemu digitalocean hetzner" make weekly-build
 ```
 
 After a successful build, `make weekly-build` prints the exact publish commands
@@ -261,7 +273,7 @@ BUILD_ID=20260328.0 make publish
 Build the weekly profiles and publish:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" make weekly-publish
+IMAGE_PROFILES="generic-qemu digitalocean hetzner" make weekly-publish
 ```
 
 Without an explicit `BUILD_ID`, the weekly wrappers ask R2 for the next default
@@ -335,7 +347,7 @@ Core staged-build settings:
 - `VERSION`
   Top-level repository file containing the canonical SemVer `release_version`.
 - `IMAGE_PROFILE`
-  `generic-qemu` or `digitalocean`. Default: `generic-qemu`.
+  `generic-qemu`, `digitalocean`, or `hetzner`. Default: `generic-qemu`.
 - `BUILD_ID`
   Optional explicit `YYYYMMDD.N` build identity. If unset, the builder auto-selects the next daily build number.
 - `BUILD_VERSION`
@@ -349,7 +361,7 @@ Core staged-build settings:
 - `REUSE_ROOTFS`
   `true` or `false`. Default: `false`. When `true`, `build.sh` reuses an existing compatible rootfs tarball for the selected `release_version` and `build_id` instead of rebuilding Stage 1.
 - `IMAGE_PROFILES`
-  Space-separated profile list used by `make build-all`. Default: `generic-qemu digitalocean`.
+  Space-separated profile list used by `make build-all`. Default: `generic-qemu digitalocean hetzner`.
 - `DISK_SIZE`
   Final raw disk size used for Stage 2 assembly.
 - `DEFAULT_DISK_SIZE`
@@ -357,6 +369,7 @@ Core staged-build settings:
   If neither is set, the profile default is used:
   `generic-qemu` => `2G`
   `digitalocean` => `4G`
+  `hetzner` => `4G`
 
 BlackArch settings:
 
@@ -377,7 +390,7 @@ Image customization settings:
 
 - `IMAGE_ENABLE_QEMU_GUEST_AGENT`
   Optional override. When unset, the selected profile decides the default.
-  `generic-qemu` resolves to `true`; `digitalocean` resolves to `false`.
+  `generic-qemu` and `hetzner` resolve to `true`; `digitalocean` resolves to `false`.
 - `IMAGE_HOSTNAME`
 - `IMAGE_SWAP_SIZE`
 - `IMAGE_LOCALE`
@@ -469,6 +482,9 @@ When `BUILD_WORKSPACE` is unset, that is the repository-local `output/`:
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz`
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.img.gz.SHA256`
 - `output/images/BlackArch-Linux-x86_64-digitalocean-v<release_version>+<build_id>.manifest`
+- `output/images/BlackArch-Linux-x86_64-hetzner-v<release_version>+<build_id>.qcow2`
+- `output/images/BlackArch-Linux-x86_64-hetzner-v<release_version>+<build_id>.qcow2.SHA256`
+- `output/images/BlackArch-Linux-x86_64-hetzner-v<release_version>+<build_id>.manifest`
 - `output/images/BlackArch-Linux-x86_64-<profile>-v<release_version>+<build_id>.build.log`
 
 The manifest files are simple `key=value` records.
@@ -547,6 +563,18 @@ DigitalOcean note:
 - the profile cleans `cloud-init` state from its Stage 2 hook before export
 - runtime platform validation is still not implemented, so DigitalOcean-specific boot/import verification is still manual
 
+Hetzner note:
+
+- the profile exports a `qcow2` intended for `hcloud-upload-image --format qcow2`
+- the profile hook restricts `cloud-init` datasource probing to `Hetzner` with `None` fallback while preserving the configured default cloud user
+- the profile runs `growpart` and `resizefs` on every boot, matching Hetzner's standard-image behavior for resized root disks
+- the profile permits SSH public-key login as both `root` and the default `blackarch` user for deployment inspection
+- the profile installs a small systemd oneshot that mirrors Hetzner metadata SSH keys into the `blackarch` user's `authorized_keys`, because Hetzner vendor-data sets its own runtime default user to `root`
+- the profile installs a small systemd oneshot that retriggers udev for Hetzner Cloud Volumes
+- SSH password authentication remains disabled, so create Hetzner servers from this snapshot with an SSH key selected
+- the default `blackarch` cloud user is created and should receive injected SSH keys
+- runtime platform validation is still manual; inspect `/var/log/cloud-init.log` from the Hetzner console/rescue system if first boot customization fails
+
 ## First boot defaults
 
 The images are prepared for `cloud-init` environments with these defaults:
@@ -555,6 +583,8 @@ The images are prepared for `cloud-init` environments with these defaults:
 - SSH password authentication is disabled
 - the default cloud user is `blackarch`
 - the default cloud user gets passwordless `sudo` unless overridden
+
+The `hetzner` profile currently permits SSH public-key login as both `root` and `blackarch` to make provider-specific deployment inspection easier. Password login remains disabled.
 
 Manual boot/runtime validation is still your responsibility. This repository does not yet provide a `validate-image.sh`, QEMU smoke-boot stage, or provider-specific runtime checks.
 

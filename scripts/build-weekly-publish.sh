@@ -31,7 +31,7 @@ Options:
 
 Environment:
   BUILD_ID          Optional explicit YYYYMMDD.N build ID
-  IMAGE_PROFILES   Space-separated profile list (default: generic-qemu digitalocean)
+  IMAGE_PROFILES   Space-separated profile list (default: generic-qemu digitalocean hetzner)
 EOF
 }
 

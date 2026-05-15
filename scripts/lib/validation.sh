@@ -142,11 +142,11 @@ function validate_image_profile_value() {
   local profile="${1:-generic-qemu}"
 
   case "${profile}" in
-    generic-qemu | digitalocean)
+    generic-qemu | digitalocean | hetzner)
       return 0
       ;;
     *)
-      validation_fail "IMAGE_PROFILE must be one of: generic-qemu, digitalocean (got: ${profile})"
+      validation_fail "IMAGE_PROFILE must be one of: generic-qemu, digitalocean, hetzner (got: ${profile})"
       return 1
       ;;
   esac

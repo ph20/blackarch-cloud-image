@@ -18,7 +18,7 @@ source "${PROJECT_ROOT}/scripts/lib/logging.sh"
 source "${PROJECT_ROOT}/scripts/lib/manifest.sh"
 
 function setup_logging() {
-  ensure_directories "${ROOTFS_OUTPUT_DIR}" "${IMAGE_OUTPUT_DIR}" "${TMP_ROOT}"
+  ensure_directories "${OUTPUT_ROOT}" "${ROOTFS_OUTPUT_DIR}" "${IMAGE_OUTPUT_DIR}" "${TMP_ROOT}"
 
   ROOTFS_BUILD_LOG="${ROOTFS_BUILD_LOG_PATH}"
   IMAGE_BUILD_LOG="${IMAGE_BUILD_LOG_PATH}"

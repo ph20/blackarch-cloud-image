@@ -182,8 +182,8 @@ function finalize_mounted_image() {
 function capture_mounted_filesystem_identifiers() {
   local mount_root="${1}"
 
-  TARGET_ROOT_FS_UUID="$(findmnt -rn -o UUID --target "${mount_root}")"
-  TARGET_ROOT_PARTUUID="$(findmnt -rn -o PARTUUID --target "${mount_root}")"
+  TARGET_ROOT_FS_UUID="$(blkid -s UUID -o value "${TARGET_ROOT_PARTITION}")"
+  TARGET_ROOT_PARTUUID="$(blkid -s PARTUUID -o value "${TARGET_ROOT_PARTITION}")"
   TARGET_EFI_FS_UUID=''
   TARGET_EFI_PARTUUID=''
 
@@ -193,8 +193,8 @@ function capture_mounted_filesystem_identifiers() {
   fi
 
   if [ -n "${TARGET_EFI_PARTITION:-}" ]; then
-    TARGET_EFI_FS_UUID="$(findmnt -rn -o UUID --target "${mount_root}/efi")"
-    TARGET_EFI_PARTUUID="$(findmnt -rn -o PARTUUID --target "${mount_root}/efi")"
+    TARGET_EFI_FS_UUID="$(blkid -s UUID -o value "${TARGET_EFI_PARTITION}")"
+    TARGET_EFI_PARTUUID="$(blkid -s PARTUUID -o value "${TARGET_EFI_PARTITION}")"
 
     if [ -z "${TARGET_EFI_FS_UUID}" ]; then
       printf 'Failed to resolve EFI filesystem UUID for %s/efi\n' "${mount_root}" >&2

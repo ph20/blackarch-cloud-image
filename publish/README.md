@@ -83,7 +83,7 @@ Immutable build keys are not overwritten unless `--allow-overwrite` is passed to
 Build the weekly profile set without publishing:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" make weekly-build
+IMAGE_PROFILES="generic-qemu digitalocean hetzner" make weekly-build
 ```
 
 After the build succeeds, the command prints the exact publish commands for that
@@ -97,7 +97,7 @@ BUILD_ID=20260514.0 make publish
 The combined build-and-publish wrapper is still available for automation:
 
 ```bash
-IMAGE_PROFILES="generic-qemu digitalocean" make weekly-publish
+IMAGE_PROFILES="generic-qemu digitalocean hetzner" make weekly-publish
 ```
 
 Without an explicit `BUILD_ID`, the weekly wrappers ask R2 for the next build ID
