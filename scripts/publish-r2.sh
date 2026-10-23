@@ -15,6 +15,9 @@ source "${SCRIPT_DIR}/lib/config.sh"
 # shellcheck source=scripts/lib/r2.sh
 source "${SCRIPT_DIR}/lib/r2.sh"
 
+# shellcheck source=scripts/lib/public-log.sh
+source "${SCRIPT_DIR}/lib/public-log.sh"
+
 CHANNEL="weekly"
 BUILD_ID=""
 PROMOTE_LATEST=0
@@ -236,6 +239,16 @@ function remember_immutable_upload() {
   IMMUTABLE_KEYS+=("${key}")
 }
 
+function remember_public_build_log_upload() {
+  local source="${1}"
+  local key="${2}"
+  local destination="${TMP_DIR}/public-logs/${key}"
+
+  mkdir -p "$(dirname "${destination}")"
+  sanitize_public_build_log "${source}" "${destination}"
+  remember_immutable_upload "${destination}" "${key}"
+}
+
 function remember_build_identity() {
   local release_version="${1}"
   local artifact_version="${2}"
@@ -371,8 +384,8 @@ function process_manifest() {
   remember_immutable_upload "${image_path}" "${image_key}"
   remember_immutable_upload "${sha256_path}" "${sha256_key}"
   remember_immutable_upload "${manifest_path}" "${manifest_key}"
-  remember_immutable_upload "${build_log_path}" "${build_log_key}"
-  remember_immutable_upload "${rootfs_build_log_path}" "${rootfs_build_log_key}"
+  remember_public_build_log_upload "${build_log_path}" "${build_log_key}"
+  remember_public_build_log_upload "${rootfs_build_log_path}" "${rootfs_build_log_key}"
 
   log "Selected image manifest: $(basename "${manifest_path}") (${profile}, ${arch}, ${artifact_format})"
 }
@@ -625,6 +638,7 @@ function main() {
   export R2_DRY_RUN="${DRY_RUN}"
   need_cmd jq
   need_cmd sha256sum
+  need_cmd awk
   r2_require_config
   r2_require_publish_tools
 

@@ -13,6 +13,7 @@ and do not create a local artifact mirror.
 - `jq`
 - `gpg`
 - `sha256sum`
+- `awk`
 
 ## Configuration
 
@@ -62,6 +63,20 @@ Dry-run mode validates local manifests, files, checksums, the per-image build
 logs, and the shared rootfs build log, then prints the planned object keys,
 content types, cache-control values, and public URLs. It does not upload objects
 or require R2 credentials.
+
+Both image and rootfs logs are sanitized before upload, including during dry
+runs. Local checkout and profile-script directory prefixes are replaced with
+markers such as `[repo]` and `[profile-hooks]`. Separate build workspace paths
+such as `/build/output` and `/build/tmp` remain visible. Paths inside the
+checkout are masked even when the checkout is also the build workspace.
+Commands, script names, artifact names, and paths inside the guest image remain
+readable. The publisher also reads the script locations from older logs
+so publishing from a different checkout does not expose their original paths.
+Original logs are kept locally; temporary sanitized copies are removed when
+the publisher exits. Existing builds do not need to be rebuilt for this change.
+
+Previously uploaded logs are not changed automatically. Replacing an existing
+published log requires an explicit targeted upload to its R2 object key.
 
 If the build used a custom workspace, use the same value when publishing:
 

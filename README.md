@@ -159,6 +159,14 @@ sha256sum -c BlackArch-Linux-x86_64-generic-qemu-v<release_version>+<build_id>.q
 
 Publishing is separate from image building.
 
+Before uploading either image or rootfs build logs, the publisher creates
+temporary copies with local checkout and profile-script locations replaced by
+markers such as `[repo]` and `[profile-hooks]`. Build workspace paths such as
+`/build/output` and `/build/tmp` remain readable unless they are inside the
+checkout itself. This also applies to existing builds; the original local logs
+remain available for troubleshooting. Dry runs prepare the same sanitized
+copies without uploading them.
+
 Build weekly profiles without publishing:
 
 ```bash
