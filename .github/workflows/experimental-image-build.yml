@@ -1,0 +1,70 @@
+name: Experimental Ubuntu Image Build
+
+on:
+  push:
+    branches:
+      - experiment/ubuntu-actions-build
+  workflow_dispatch:
+    inputs:
+      image_profile:
+        description: Platform profile (BlackArch core only)
+        type: choice
+        options:
+          - generic-qemu
+          - digitalocean
+          - hetzner
+        default: generic-qemu
+      disk_size:
+        description: Raw image size
+        type: string
+        default: 4G
+      upload_image:
+        description: Keep the final image as a one-day GitHub artifact (uses artifact storage)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: experimental-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build in privileged Arch container
+        env:
+          IMAGE_PROFILE: ${{ inputs.image_profile || 'generic-qemu' }}
+          DISK_SIZE: ${{ inputs.disk_size || '4G' }}
+        run: bash scripts/ci-build-ubuntu.sh
+
+      - name: Upload public build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/blackarch-build/public/
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: Upload final image
+        if: success() && inputs.upload_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ inputs.image_profile }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/blackarch-build/output/images/*.qcow2
+            ${{ runner.temp }}/blackarch-build/output/images/*.img.gz
+            ${{ runner.temp }}/blackarch-build/output/images/*.SHA256
+            ${{ runner.temp }}/blackarch-build/output/images/*.manifest
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
