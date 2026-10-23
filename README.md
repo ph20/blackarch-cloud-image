@@ -102,6 +102,35 @@ sudo IMAGE_PROFILE=digitalocean BUILD_ID=20260321.2 REUSE_ROOTFS=true ./build.sh
 BUILD_ID=20260321.2 make build-all
 ```
 
+## Experimental GitHub Actions build
+
+The `Experimental Ubuntu Image Build` workflow tests a real image build on the
+standard `ubuntu-24.04` x86_64 runner using a privileged `archlinux:latest`
+container. It shares the host's `/dev` and read-only `/run/udev`, and writes build
+state to `${RUNNER_TEMP}/blackarch-build` through a bind mount. The host must
+provide loop devices and Btrfs support; the container installs the Arch build
+dependencies before running the existing preflight and three-stage builder.
+The helper initializes the container's pacman signing key before `pacstrap`,
+because official Arch container images omit that key.
+
+During the experiment, pushes to `experiment/ubuntu-actions-build` build
+`generic-qemu` with `BLACKARCH_PROFILE=core` and `DISK_SIZE=4G`. The workflow also
+declares `workflow_dispatch` with a profile choice, disk size, and an optional
+final-image upload. GitHub requires the workflow file to exist on the default
+branch before manual dispatch is available. It does not run image builds for
+pull requests or publish to R2.
+
+Sanitized log copies, manifests, and checksums are retained as a GitHub artifact
+for one day, including after build failures. Original logs remain in the
+temporary build workspace. Final-image uploads are off by default to minimize
+artifact storage use. The reusable rootfs tarball is not uploaded. CI build IDs
+use the UTC date and `GITHUB_RUN_NUMBER`; these are experimental build IDs, not
+the R2 publishing allocator. No cloud credentials are needed.
+
+Standard runners are free for public repositories. Disk space and loop/udev
+behavior must be verified by the experiment; the workflow has a two-hour timeout.
+There is no automated boot test. The normal local build commands are unchanged.
+
 ## Configuration
 
 Most builds only need these variables:
