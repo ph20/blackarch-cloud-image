@@ -18,7 +18,7 @@ BUILD_ARG := $(BUILD_ID)
 endif
 SUDO_PRESERVE_ENV := IMAGE_PROFILE,IMAGE_PROFILES,BUILD_ID,BUILD_VERSION,BUILD_WORKSPACE,OUTPUT_ROOT,TMP_ROOT,BUILD_WORKDIR,REUSE_ROOTFS,DEFAULT_DISK_SIZE,DISK_SIZE,BLACKARCH_PROFILE,BLACKARCH_PACKAGES,BLACKARCH_KEYRING_VERSION,BLACKARCH_KEYRING_SHA256,BLACKARCH_STRAP_URL,BLACKARCH_STRAP_SHA256,IMAGE_ENABLE_QEMU_GUEST_AGENT,IMAGE_HOSTNAME,IMAGE_SWAP_SIZE,IMAGE_LOCALE,IMAGE_TIMEZONE,IMAGE_KEYMAP,IMAGE_DEFAULT_USER,IMAGE_DEFAULT_USER_GECOS,IMAGE_PASSWORDLESS_SUDO
 
-.PHONY: build build-all publish publish-dry-run weekly-build weekly-build-dry-run weekly-publish weekly-publish-dry-run check-env lint clean help
+.PHONY: build build-all publish publish-dry-run weekly-build weekly-build-dry-run weekly-publish weekly-publish-dry-run check-env lint test clean help
 
 build: check-env
 	@if [ "$$(id -u)" -eq 0 ]; then \
@@ -58,8 +58,12 @@ check-env:
 	bash ./scripts/check-build-env.sh
 
 lint:
-	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh
-	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh
+	bash -n build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh tests/*.sh tests/helpers/*.sh
+	shellcheck build.sh images/*.sh scripts/*.sh scripts/lib/*.sh profiles/*.env profiles/*.sh tests/*.sh tests/helpers/*.sh
+
+test:
+	bash tests/public-log.sh
+	bash tests/prune-r2.sh
 
 clean:
 	bash ./scripts/clean-build-state.sh
@@ -84,5 +88,6 @@ help:
 		'  weekly-publish-dry-run  Print the planned weekly build/publish commands without building or uploading' \
 		'  check-env  Validate host requirements, sudo availability, and free space' \
 		'  lint       Run shell syntax checks and shellcheck' \
+		'  test       Run offline publishing and R2 pruning tests' \
 		'  clean      Unmount stale tmp/ build leftovers and delete artifacts from the configured build workspace' \
 		'  help       Show this help'

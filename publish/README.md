@@ -119,6 +119,58 @@ Without an explicit `BUILD_ID`, the weekly wrappers ask R2 for the next build ID
 using `scripts/next-build-id-r2.sh`. `make weekly-publish` checks required R2
 publish configuration before starting the root build.
 
+## Pruning Old Weekly Builds
+
+Pruning is a separate operation; publishing never deletes old builds.
+`scripts/prune-r2.sh` reads the published R2 catalog and defaults to a dry run:
+
+```bash
+./scripts/prune-r2.sh
+./scripts/prune-r2.sh --channel weekly --keep-last 8 --dry-run
+```
+
+The default policy keeps the newest 4 weekly builds, ordered by build ID with
+numeric iteration ordering (`YYYYMMDD.10` is newer than `YYYYMMDD.9`). The build
+referenced by `blackarch/images/latest.json` is always protected, even if that
+means keeping an additional older weekly build. The `releases` channel cannot
+be pruned. Unindexed/incomplete uploads are not selected.
+
+The plan lists every exact object key and the object count and bytes for each
+selected build. Deletion includes all objects under that build's exact
+`blackarch/images/weekly/<year>/<build_id>/` prefix: images, checksums,
+signatures, manifests, logs, and the per-build index. The shared catalog at
+`blackarch/images/index.json` is updated after each fully deleted build.
+`latest.json`, release objects, and local build outputs are left in place.
+
+Apply a reviewed policy explicitly:
+
+```bash
+./scripts/prune-r2.sh --keep-last 8 --apply
+```
+
+Run the script directly. Every invocation reads a fresh catalog and generates
+a new plan. Dry runs require the same R2 configuration and valid credentials as
+real publishing because they list actual remote objects. The credentials need read
+and list permissions; applying also needs object deletion and root index write
+permissions. Use an AWS CLI supporting `s3api put-object --if-match`.
+
+Run pruning only while publishing and other pruning processes are idle. The
+script checks catalog/latest ETags before changes and conditionally writes the
+catalog so a concurrent catalog update is not silently overwritten. These
+checks do not make object deletion and publishing one atomic operation.
+
+Successful quiet-mode bulk deletion can produce empty AWS CLI output; this is
+accepted when the command succeeds. Explicit per-object errors, invalid JSON,
+and nonzero command exit statuses still stop pruning.
+
+On a failed deletion, the affected build's catalog entry remains available for
+a retry; earlier completed removals remain committed. If an index write fails
+after deletion, that entry can temporarily reference removed objects. Stop the
+conflicting operation or fix the reported error, review a fresh dry run, then
+rerun with `--apply` to remove remaining objects and reconcile the entry.
+Authentication, metadata, and listing errors stop pruning rather than being
+treated as an empty bucket. No lifecycle rules are changed.
+
 ## Verification
 
 After downloading a build directory's checksum files:

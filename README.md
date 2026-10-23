@@ -186,6 +186,21 @@ Build and publish weekly profiles:
 IMAGE_PROFILES="generic-qemu digitalocean hetzner" make weekly-publish
 ```
 
+Preview removal of old weekly builds from R2:
+
+```bash
+./scripts/prune-r2.sh
+```
+
+This keeps the newest 4 published weekly builds and always protects the build
+referenced by `latest.json`. To keep a different number, use
+`./scripts/prune-r2.sh --keep-last 8`. After reviewing the plan, run
+`./scripts/prune-r2.sh --keep-last 8 --apply` with the same retention value to
+delete the selected builds and update the R2 catalog. Both modes require R2
+credentials. Run pruning while publishing
+and other pruning processes are idle. Release builds and unindexed objects are
+left in place; local build outputs are not used or removed.
+
 See `publish/README.md` for R2 credentials, object layout, signing, and verification details.
 
 ## Versioning
@@ -256,6 +271,7 @@ Common targets:
 | `make build-all` | Build multiple profiles with a shared rootfs artifact. |
 | `make check-env` | Validate the host build environment. |
 | `make lint` | Run shell syntax checks and ShellCheck. |
+| `make test` | Run offline publishing and R2 pruning tests. |
 | `make clean` | Remove build leftovers and output artifacts. |
 | `make weekly-build` | Build the weekly profile set and print publish commands. |
 | `make weekly-publish` | Build the weekly profile set and publish to R2. |
