@@ -9,6 +9,10 @@ if [ "${GITHUB_ACTIONS:-}" != true ] || [ "$(id -u)" -ne 0 ] || [ "${BUILD_WORKS
   exit 1
 fi
 
+# Official Arch container images omit the local signing key. pacstrap copies
+# this keyring into the target, where BlackArch needs it to sign imported keys.
+pacman-key --init
+
 pacman -Syu --noconfirm --needed \
   archlinux-keyring arch-install-scripts btrfs-progs ca-certificates curl \
   dosfstools e2fsprogs gawk git gnupg gptfdisk gzip make qemu-img systemd \

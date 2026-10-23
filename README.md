@@ -110,6 +110,8 @@ container. It shares the host's `/dev` and read-only `/run/udev`, and writes bui
 state to `${RUNNER_TEMP}/blackarch-build` through a bind mount. The host must
 provide loop devices and Btrfs support; the container installs the Arch build
 dependencies before running the existing preflight and three-stage builder.
+The helper initializes the container's pacman signing key before `pacstrap`,
+because official Arch container images omit that key.
 
 During the experiment, pushes to `experiment/ubuntu-actions-build` build
 `generic-qemu` with `BLACKARCH_PROFILE=core` and `DISK_SIZE=4G`. The workflow also
